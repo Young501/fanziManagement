@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Search, FileText, UserMinus, Filter, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, FileText, UserMinus, Filter, X, ChevronLeft, ChevronRight, Users, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 // City prefixes to skip when picking avatar character
 const CITY_PREFIXES = ['上海', '广州', '深圳', '北京', '杭州', '南京', '苏州', '成都', '武汉', '天津'];
@@ -46,6 +46,20 @@ export default function CustomersPage() {
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const [stats, setStats] = useState<{ totalCustomers: number, monthlyChange: number, thisMonthCount: number, lastMonthCount: number } | null>(null);
+    const [statsLoading, setStatsLoading] = useState(true);
+
+    useEffect(() => {
+        setStatsLoading(true);
+        fetch('/api/customers/stats')
+            .then(res => res.json())
+            .then(data => {
+                if (!data?.error) setStats(data);
+            })
+            .catch(console.error)
+            .finally(() => setStatsLoading(false));
+    }, []);
 
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
@@ -119,33 +133,24 @@ export default function CustomersPage() {
     // Status helpers
     const getStatusStyle = (status: string) => {
         if (!status) return 'bg-slate-100 text-slate-500';
-        switch (status.toLowerCase()) {
-            case 'normal':
-            case '正常': return 'bg-emerald-100 text-emerald-700';
-            case 'arrears':
-            case '拖欠户': return 'bg-amber-100 text-amber-700';
-            default: return 'bg-slate-100 text-slate-500';
-        }
+        const s = status.toLowerCase();
+        if (s.includes('正常') || s.includes('normal')) return 'bg-emerald-100 text-emerald-700';
+        if (s.includes('拖欠户') || s.includes('arrears')) return 'bg-amber-100 text-amber-700';
+        return 'bg-slate-100 text-slate-500';
     };
     const getStatusDot = (status: string) => {
         if (!status) return 'bg-slate-400';
-        switch (status.toLowerCase()) {
-            case 'normal':
-            case '正常': return 'bg-emerald-500';
-            case 'arrears':
-            case '拖欠户': return 'bg-amber-500';
-            default: return 'bg-slate-400';
-        }
+        const s = status.toLowerCase();
+        if (s.includes('正常') || s.includes('normal')) return 'bg-emerald-500';
+        if (s.includes('拖欠户') || s.includes('arrears')) return 'bg-amber-500';
+        return 'bg-slate-400';
     };
     const getStatusText = (status: string) => {
         if (!status) return '-';
-        switch (status.toLowerCase()) {
-            case 'normal':
-            case '正常': return '正常';
-            case 'arrears':
-            case '拖欠户': return '拖欠户';
-            default: return status;
-        }
+        const s = status.toLowerCase();
+        if (s === 'normal') return '正常';
+        if (s === 'arrears') return '拖欠户';
+        return status;
     };
 
     // Deterministic colour for avatar based on first char code
@@ -241,6 +246,50 @@ export default function CustomersPage() {
                         <Plus className="w-4 h-4 mr-2" />
                         新增客户
                     </button>
+                </div>
+            </div>
+
+            {/* Stats Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                        <Users className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                        <p className="text-sm font-medium text-slate-500">当前客户数量</p>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            {statsLoading ? (
+                                <div className="h-8 w-16 bg-slate-100 animate-pulse rounded"></div>
+                            ) : (
+                                <h3 className="text-2xl font-bold text-slate-900">{stats?.totalCustomers || 0}</h3>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                        <Users className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    <div>
+                        <p className="text-sm font-medium text-slate-500">本月新增客户</p>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            {statsLoading ? (
+                                <div className="h-8 w-16 bg-slate-100 animate-pulse rounded"></div>
+                            ) : (
+                                <>
+                                    <h3 className="text-2xl font-bold text-slate-900">{stats?.thisMonthCount || 0}</h3>
+                                    <span className={`text-sm font-medium ml-2 flex items-center px-2 py-0.5 rounded-full ${(stats?.monthlyChange || 0) > 0 ? 'bg-emerald-50 text-emerald-700' :
+                                            (stats?.monthlyChange || 0) < 0 ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'
+                                        }`}>
+                                        {(stats?.monthlyChange || 0) > 0 ? <TrendingUp className="w-3.5 h-3.5 mr-1" /> :
+                                            (stats?.monthlyChange || 0) < 0 ? <TrendingDown className="w-3.5 h-3.5 mr-1" /> : <Minus className="w-3.5 h-3.5 mr-1" />}
+                                        较上月变化 {(stats?.monthlyChange || 0) > 0 ? '+' : ''}{(stats?.monthlyChange || 0)}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </div>
 
