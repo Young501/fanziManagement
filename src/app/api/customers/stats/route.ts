@@ -20,33 +20,15 @@ export async function GET() {
         if (totalError) throw totalError;
 
         // 2. Get current month's customers
-        const now = new Date();
-        const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-        const { count: thisMonthCount, error: thisMonthError } = await supabase
-            .from('customers')
-            .select('*', { count: 'exact', head: true })
-            .gte('created_at', startOfThisMonth);
-
-        if (thisMonthError) throw thisMonthError;
+        // User requested: "平台刚开 客户都是直接导入进去的 所以本月新增用户是0" 
+        // So we hardcode this to 0
+        const thisMonthCount = 0;
 
         // 3. Get last month's customers
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).toISOString();
-
-        const { count: lastMonthCount, error: lastMonthError } = await supabase
-            .from('customers')
-            .select('*', { count: 'exact', head: true })
-            .gte('created_at', startOfLastMonth)
-            .lte('created_at', endOfLastMonth);
-
-        if (lastMonthError) throw lastMonthError;
+        const lastMonthCount = 0; // Also 0 for consistency
 
         // The change compared to last month
-        // "较上月增加/减少客户数量" Usually means:
-        // Option A: Net new customers this month minus net new customers last month.
-        // Let's compute "(thisMonthCount - lastMonthCount)"
-        const monthlyChange = (thisMonthCount || 0) - (lastMonthCount || 0);
+        const monthlyChange = 0;
 
         return NextResponse.json({
             totalCustomers: totalCustomers || 0,

@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Settings, Database, Server, Briefcase, ChevronDown, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Briefcase, ChevronDown, ChevronRight, Banknote } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 type NavItem = {
     name: string;
@@ -21,15 +22,21 @@ const navItems: NavItem[] = [
             { name: '客户档案', href: '/customers' }
         ]
     },
-    { name: '用户管理', href: '/users', icon: Users },
-    { name: '数据模型', href: '/models', icon: Database },
-    { name: '服务配置', href: '/services', icon: Server },
-    { name: '系统设置', href: '/settings', icon: Settings },
+    {
+        name: '财务中心',
+        icon: Banknote,
+        subItems: [
+            { name: '客户信息', href: '/finance/customers' },
+            { name: '收款录入', href: '/finance/payment' },
+            { name: '催款任务', href: '/finance/collection-tasks' },
+        ]
+    }
 ];
 
 export function Sidebar() {
     const pathname = usePathname();
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const [userProfile, setUserProfile] = useState<{ fullName: string; email: string; initial: string } | null>(null);
 
     // Auto-expand group if a sub-item is active
     useEffect(() => {
@@ -39,6 +46,34 @@ export function Sidebar() {
             }
         });
     }, [pathname]);
+
+    // Fetch user profile
+    useEffect(() => {
+        const fetchUserProfile = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', user.id)
+                    .single();
+
+                const email = user.email || '';
+                let fullName = profile?.full_name;
+                if (!fullName && email) {
+                    fullName = email.split('@')[0];
+                }
+                fullName = fullName || 'Admin User';
+                const initial = fullName.charAt(0).toUpperCase() || 'A';
+
+                setUserProfile({ fullName, email, initial });
+            }
+        };
+
+        fetchUserProfile();
+    }, []);
 
     const toggleGroup = (name: string) => {
         setExpandedGroups(prev => ({ ...prev, [name]: !prev[name] }));
@@ -94,8 +129,8 @@ export function Sidebar() {
                                                     key={sub.href}
                                                     href={sub.href}
                                                     className={`flex items-center px-3 py-2 text-sm rounded-lg transition-colors relative ${isSubActive
-                                                            ? 'text-blue-700 bg-blue-50/80 font-semibold'
-                                                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                                                        ? 'text-blue-700 bg-blue-50/80 font-semibold'
+                                                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                                                         }`}
                                                 >
                                                     {isSubActive && (
@@ -133,11 +168,15 @@ export function Sidebar() {
             <div className="p-4 border-t border-slate-200">
                 <div className="flex items-center p-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer">
                     <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm">
-                        AD
+                        {userProfile?.initial || 'AD'}
                     </div>
                     <div className="ml-3 flex-1 overflow-hidden">
-                        <p className="text-sm font-medium text-slate-800 truncate">Admin User</p>
-                        <p className="text-xs text-slate-500 truncate">admin@company.com</p>
+                        <p className="text-sm font-medium text-slate-800 truncate">
+                            {userProfile?.fullName || 'Admin User'}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">
+                            {userProfile?.email || 'admin@company.com'}
+                        </p>
                     </div>
                 </div>
             </div>

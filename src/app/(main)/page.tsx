@@ -1,11 +1,111 @@
-import { Database, Users, ArrowUpRight, Activity } from 'lucide-react';
+export const dynamic = 'force-dynamic';
 
-export default function Home() {
+import { Database, Users, ArrowUpRight, Activity } from 'lucide-react';
+import { createClient as createSupabaseJSClient } from '@supabase/supabase-js';
+import { createClient } from '@/utils/supabase/server';
+
+function createAdminClient() {
+  return createSupabaseJSClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+export default async function Home() {
+  const supabase = createAdminClient();
+  const serverClient = await createClient();
+  const { data: { user } } = await serverClient.auth.getUser();
+
+  let adminName = 'Admin';
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.full_name) {
+      adminName = profile.full_name.charAt(0) + '经理';
+    } else if (user.email) {
+      adminName = user.email.charAt(0).toUpperCase() + '经理';
+    }
+  }
+
+  // 1. Get total customers
+  const { count: totalCustomers } = await supabase
+    .from('customers')
+    .select('*', { count: 'exact', head: true });
+
+  // 2. Get current month's customers (Hardcoded to 0 as per request since they were directly imported)
+  const thisMonthNewCustomers = 0;
+
+  const now = new Date();
+
+  // 3. Collection tasks analysis
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const monthEnd = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+
+  const { data: allTasks } = await supabase
+    .from('collection_tasks')
+    .select(`
+        id,
+        due_date,
+        status,
+        company_receivables (
+            payment_due_date,
+            amount_payable_period,
+            amount_paid_period
+        )
+    `)
+    .in('status', ['open', 'in_progress', 'promised']);
+
+  let tasksDueThisMonth = 0;
+  let tasksOverdue = 0;
+
+  (allTasks || []).forEach((task: any) => {
+    const rec = task.company_receivables ?? {};
+    const paid = Number(rec.amount_paid_period || 0);
+    const payable = Number(rec.amount_payable_period || 0);
+    const uncollected_amount = Math.max(0, payable - paid);
+
+    if (uncollected_amount <= 0) return; // Only open/unpaid
+
+    const dueDate = rec.payment_due_date ?? task.due_date;
+    const isOverdue = dueDate && dueDate < monthStart;
+
+    if (isOverdue) {
+      tasksOverdue++;
+    } else if (dueDate >= monthStart && dueDate <= monthEnd) {
+      tasksDueThisMonth++;
+    }
+  });
+
+  // 4. Recent Payment Records
+  const { data: recentPayments } = await supabase
+    .from('payment_records')
+    .select(`
+        id,
+        paid_amount,
+        paid_at,
+        customers (
+            company_name
+        )
+    `)
+    .order('paid_at', { ascending: false })
+    .limit(5);
+
   const stats = [
-    { name: '总用户数', value: '1,234', change: '+12%', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { name: '数据流请求', value: '8.4M', change: '+5.4%', icon: Database, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { name: '系统负载', value: '42%', change: '-2%', icon: Activity, color: 'text-rose-600', bg: 'bg-rose-50' },
-    { name: '活跃会话', value: '156', change: '+18%', icon: ArrowUpRight, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { name: '总客户数', value: totalCustomers || 0, change: '实时', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { name: '本月新增客户', value: thisMonthNewCustomers || 0, change: '实时', icon: Activity, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { name: '本月待收款任务', value: tasksDueThisMonth, change: '实时', icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { name: '逾期催款任务', value: tasksOverdue, change: '加急', icon: ArrowUpRight, color: 'text-rose-600', bg: 'bg-rose-50' },
   ];
 
   return (
@@ -13,19 +113,11 @@ export default function Home() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-1">
-            欢迎回来, Admin
+            欢迎回来, {adminName}
           </h1>
           <p className="text-slate-500 text-sm">
             查看实时数据与平台运行状态。
           </p>
-        </div>
-        <div className="hidden sm:flex space-x-3">
-          <button className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors shadow-sm">
-            导出报告
-          </button>
-          <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all duration-200 shadow-sm">
-            新建项目
-          </button>
         </div>
       </div>
 
@@ -42,9 +134,9 @@ export default function Home() {
                   <Icon className={`w-5 h-5 ${stat.color}`} />
                 </div>
                 <span
-                  className={`text-xs font-semibold px-2 py-1 rounded-full ${stat.change.startsWith('+')
-                      ? 'bg-emerald-50 text-emerald-600'
-                      : 'bg-rose-50 text-rose-600'
+                  className={`text-xs font-semibold px-2 py-1 rounded-full ${stat.change === '加急'
+                    ? 'bg-rose-50 text-rose-600'
+                    : 'bg-emerald-50 text-emerald-600'
                     }`}
                 >
                   {stat.change}
@@ -63,7 +155,7 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-1 lg:col-span-2 p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-slate-900">系统活动趋势</h2>
+            <h2 className="text-lg font-semibold text-slate-900">近期回款趋势</h2>
             <button className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
               查看全部
             </button>
@@ -74,19 +166,25 @@ export default function Home() {
         </div>
 
         <div className="col-span-1 p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900 mb-6">最近活动</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-6">最近收款活动</h2>
           <div className="space-y-4">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="flex items-start gap-3 relative pb-4 before:absolute before:inset-y-0 before:left-[11px] before:w-px before:bg-slate-200 last:before:hidden last:pb-0">
-                <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 relative z-10">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+            {recentPayments && recentPayments.length > 0 ? (
+              recentPayments.map((item: any, idx: number) => (
+                <div key={item.id || idx} className="flex items-start gap-3 relative pb-4 before:absolute before:inset-y-0 before:left-[11px] before:w-px before:bg-slate-200 last:before:hidden last:pb-0">
+                  <div className="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-200 relative z-10">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-slate-800">
+                      收到 <strong>{item.customers?.company_name || '客户'}</strong> 的付款 <span className="text-emerald-600 font-semibold">¥{item.paid_amount}</span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">{formatDate(item.paid_at)}</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-800">用户 User_{item} 登录成功</p>
-                  <p className="text-xs text-slate-500 mt-1">10 分钟前</p>
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-sm text-slate-500">暂无收款活动</p>
+            )}
           </div>
         </div>
       </div>
