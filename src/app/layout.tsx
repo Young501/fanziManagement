@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "范咨管理平台",
   description: "企业级管理平台",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({
