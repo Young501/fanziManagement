@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
     Search, CheckCircle2, AlertCircle, Wallet, ChevronRight,
     X, CreditCard, Calendar, Banknote, FileText, Loader2, CircleDot,
@@ -112,7 +113,12 @@ function calcDerivedStatus(paid: number, payable: number, dueDate: string) {
     return { label: '未付款', color: 'text-amber-600', bg: 'bg-amber-50' };
 }
 
-export default function PaymentEntryPage() {
+function PaymentEntryContent() {
+    const searchParams = useSearchParams();
+    const initCustomerName = searchParams.get('customer_name');
+    const taskId = searchParams.get('task_id');
+    const router = useRouter();
+
     // Step A: Customer selection
     const [customerSearch, setCustomerSearch] = useState('');
     const [customerResults, setCustomerResults] = useState<Customer[]>([]);
@@ -160,7 +166,31 @@ export default function PaymentEntryPage() {
             discount_gap: Number(selectedReceivable.discount_gap || 0),
         });
         setChangeReasons({});
-    }, [selectedReceivable?.id]);
+    }, [selectedReceivable?.id, selectedReceivable]);
+
+    // Auto-fill from URL params
+    const hasAutoFilled = useRef(false);
+    useEffect(() => {
+        if (initCustomerName && !hasAutoFilled.current) {
+            hasAutoFilled.current = true;
+            setCustomerLoading(true);
+            setCustomerSearch(initCustomerName);
+            fetch(`/api/customers?search=${encodeURIComponent(initCustomerName)}&limit=10`)
+                .then(res => res.json())
+                .then(json => {
+                    const list: Customer[] = json.data || [];
+                    const exactMatch = list.find(c => c.company_name === initCustomerName);
+                    if (exactMatch) {
+                        selectCustomer(exactMatch);
+                    } else if (list.length > 0) {
+                        setCustomerResults(list);
+                        setShowDropdown(true);
+                    }
+                })
+                .catch(err => console.error(err))
+                .finally(() => setCustomerLoading(false));
+        }
+    }, [initCustomerName]);
 
     // Compute which fields have actually changed from original
     const changedFields = useMemo((): (keyof RenewalFields)[] => {
@@ -338,6 +368,20 @@ export default function PaymentEntryPage() {
                 setSubmitError(json.error || '提交失败，请重试');
                 return;
             }
+
+            // Auto complete collection task if taskId is provided
+            if (taskId) {
+                try {
+                    await fetch(`/api/finance/collection-tasks/${taskId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'completed' }),
+                    });
+                } catch (e) {
+                    console.error('Failed to auto-complete task', e);
+                }
+            }
+
             setSubmitSuccess(true);
             clearScreenshot();
             const r2 = await fetch(`/api/finance/payment/receivables?customer_id=${selectedCustomer!.id}`);
@@ -913,6 +957,18 @@ export default function PaymentEntryPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function PaymentEntryPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-[50vh] items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+            </div>
+        }>
+            <PaymentEntryContent />
+        </Suspense>
     );
 }
 

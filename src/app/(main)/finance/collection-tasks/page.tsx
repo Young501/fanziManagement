@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
     PhoneCall, CheckCircle2, Calendar, ChevronLeft, ChevronRight,
     AlertTriangle, Clock, Zap, RefreshCw, X, ChevronDown, User,
@@ -88,6 +89,7 @@ function getAvatarColor(name: string) {
 
 // ────────────────────────────────────────────────────────────── main component
 export default function CollectionTasksPage() {
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState<Tab>('due_this_month');
     const [tasks, setTasks] = useState<CollectionTask[]>([]);
     const [page, setPage] = useState(1);
@@ -515,6 +517,18 @@ export default function CollectionTasksPage() {
                                                 )}
                                             </div>
 
+                                            {/* Go to payment entry */}
+                                            <button
+                                                title="去收款录入"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    router.push(`/finance/payment?customer_name=${encodeURIComponent(companyName)}&task_id=${task.id}`);
+                                                }}
+                                                className="p-2 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                                            >
+                                                <Wallet className="w-4 h-4" />
+                                            </button>
+
                                             {/* Mark complete */}
                                             <button
                                                 title="标记完成"
@@ -702,6 +716,14 @@ export default function CollectionTasksPage() {
                                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors disabled:opacity-50"
                             >
                                 <PhoneCall className="w-4 h-4" /> 标记已联系
+                            </button>
+                            <button
+                                onClick={() => {
+                                    router.push(`/finance/payment?customer_name=${encodeURIComponent(selectedTask.customers?.company_name || '')}&task_id=${selectedTask.id}`);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-colors"
+                            >
+                                <Wallet className="w-4 h-4" /> 去收款录入
                             </button>
                             <button
                                 onClick={() => markComplete(selectedTask)}
