@@ -158,23 +158,42 @@ function PaymentEntryContent() {
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [submitSuccess, setSubmitSuccess] = useState(false);
     const [showAdjustment, setShowAdjustment] = useState(false);
+    const [discountedPayable, setDiscountedPayable] = useState<number | null>(null);
+    const [discountReason, setDiscountReason] = useState('');
+    const [showConfirm, setShowConfirm] = useState(false);
 
     // Initialize renewal defaults when receivable changes
     useEffect(() => {
-        if (!selectedReceivable) { setRenewal(null); setChangeReasons({}); return; }
-        const cycle = selectedReceivable.pay_cycle_months || 1;
-        setRenewal({
-            has_contract: selectedReceivable.has_contract ?? false,
-            contract_end_date: selectedReceivable.contract_end_date ?? '',
-            payment_due_date: addMonths(selectedReceivable.payment_due_date, cycle),
-            pay_cycle_months: cycle,
-            billing_fee_month: Number(selectedReceivable.billing_fee_month || 0),
-            amount_payable_period: Number(selectedReceivable.amount_payable_period || 0),
-            standard_price: Number(selectedReceivable.standard_price || 0),
-            discount_gap: Number(selectedReceivable.discount_gap || 0),
-        });
-        setChangeReasons({});
-    }, [selectedReceivable?.id, selectedReceivable]);
+        if (selectedReceivable) {
+            const nextDueDate = addMonths(selectedReceivable.payment_due_date, selectedReceivable.pay_cycle_months || 1);
+            const nextContractEnd = selectedReceivable.contract_end_date
+                ? addMonths(selectedReceivable.contract_end_date, selectedReceivable.pay_cycle_months || 1)
+                : '';
+
+            if (selectedCustomer) {
+                setRenewal({
+                    has_contract: selectedReceivable.has_contract || false,
+                    contract_end_date: nextContractEnd,
+                    payment_due_date: nextDueDate,
+                    pay_cycle_months: selectedReceivable.pay_cycle_months || 1,
+                    amount_payable_period: (selectedReceivable.billing_fee_month || 0) * (selectedReceivable.pay_cycle_months || 1),
+                    billing_fee_month: selectedReceivable.billing_fee_month || 0,
+                    standard_price: selectedReceivable.standard_price || 0,
+                    discount_gap: selectedReceivable.discount_gap || 0,
+                });
+            }
+            setDiscountedPayable(selectedReceivable.amount_payable_period);
+            setDiscountReason('');
+            setChangeReasons({});
+            setShowAdjustment(false);
+        } else {
+            setRenewal(null);
+            setDiscountedPayable(null);
+            setDiscountReason('');
+            setChangeReasons({});
+            setShowAdjustment(false);
+        }
+    }, [selectedReceivable]);
 
     // Auto-fill from URL params
     const hasAutoFilled = useRef(false);
@@ -205,9 +224,14 @@ function PaymentEntryContent() {
         if (!renewal || !selectedReceivable) return [];
         const changed: (keyof RenewalFields)[] = [];
         if (renewal.has_contract !== (selectedReceivable.has_contract ?? false)) changed.push('has_contract');
-        if (renewal.contract_end_date !== (selectedReceivable.contract_end_date ?? '')) changed.push('contract_end_date');
         const autoNext = addMonths(selectedReceivable.payment_due_date, renewal.pay_cycle_months);
         if (renewal.payment_due_date && renewal.payment_due_date !== autoNext) changed.push('payment_due_date');
+
+        const autoContractEnd = selectedReceivable.contract_end_date
+            ? addMonths(selectedReceivable.contract_end_date, renewal.pay_cycle_months)
+            : '';
+        if (renewal.contract_end_date !== autoContractEnd) changed.push('contract_end_date');
+
         if (renewal.pay_cycle_months !== (selectedReceivable.pay_cycle_months || 1)) changed.push('pay_cycle_months');
         if (renewal.billing_fee_month !== Number(selectedReceivable.billing_fee_month || 0)) changed.push('billing_fee_month');
         if (renewal.amount_payable_period !== Number(selectedReceivable.amount_payable_period || 0)) changed.push('amount_payable_period');
@@ -217,21 +241,16 @@ function PaymentEntryContent() {
     }, [renewal, selectedReceivable]);
 
     const renewalValid = changedFields.every(f => !!changeReasons[f]?.trim());
-
     const updateRenewal = <K extends keyof RenewalFields>(key: K, val: RenewalFields[K]) => {
-        setRenewal(prev => {
-            if (!prev) return null;
-            const next = { ...prev, [key]: val };
+        if (!renewal) return;
+        const next = { ...renewal, [key]: val };
 
-            // Auto-calculate amount_payable_period if cycle or monthly fee changes
-            if (key === 'pay_cycle_months' || key === 'billing_fee_month') {
-                const cycle = key === 'pay_cycle_months' ? (val as number) : next.pay_cycle_months;
-                const fee = key === 'billing_fee_month' ? (val as number) : next.billing_fee_month;
-                next.amount_payable_period = Math.round(fee * cycle * 100) / 100;
-            }
+        // Auto calculate amount_payable_period if billing_fee_month or pay_cycle_months changes
+        if (key === 'billing_fee_month' || key === 'pay_cycle_months') {
+            next.amount_payable_period = Math.round((next.billing_fee_month || 0) * (next.pay_cycle_months || 1) * 100) / 100;
+        }
 
-            return next;
-        });
+        setRenewal(next);
     };
 
     const updateReason = (key: keyof RenewalFields, val: string) => {
@@ -319,20 +338,21 @@ function PaymentEntryContent() {
     };
 
     // Preview values
-    const payable = renewal?.amount_payable_period ?? Number(selectedReceivable?.amount_payable_period || 0);
+    const payable = discountedPayable ?? (selectedReceivable?.amount_payable_period || 0);
     const paidSoFar = Number(selectedReceivable?.amount_paid_period || 0);
-    const remaining = Math.max(0, payable - paidSoFar);
     const amountNum = parseFloat(paidAmount) || 0;
+    const remaining = Math.max(0, payable - paidSoFar); // current unpaid balance for THIS period
     const afterPaid = paidSoFar + amountNum;
     const afterRemaining = Math.max(0, payable - afterPaid);
     const afterStatus = selectedReceivable
         ? calcDerivedStatus(afterPaid, payable, selectedReceivable.payment_due_date)
         : null;
 
+    const discountValid = discountedPayable === (selectedReceivable?.amount_payable_period || 0) || !!discountReason.trim();
+
     const canSubmit = useMemo(() => {
         if (!selectedCustomer) return false;
         if (!paidAt) return false;
-        const amountNum = parseFloat(paidAmount) || 0;
         if (amountNum <= 0) return false;
 
         if (isAdHoc) {
@@ -340,12 +360,13 @@ function PaymentEntryContent() {
             return true;
         } else {
             if (!selectedReceivable) return false;
-            // Use the negotiated remaining amount for alignment with UI and backend
+            // Use current payable for limit check
             if (amountNum > remaining + 0.01) return false;
             if (!renewalValid) return false;
+            if (!discountValid) return false;
             return true;
         }
-    }, [selectedCustomer, isAdHoc, adHocServiceName, selectedReceivable, paidAt, paidAmount, renewalValid, remaining]);
+    }, [selectedCustomer, isAdHoc, adHocServiceName, selectedReceivable, paidAt, amountNum, renewalValid, remaining, discountValid]);
 
     const handleSubmit = async () => {
         if (!canSubmit) return;
@@ -387,17 +408,38 @@ function PaymentEntryContent() {
                 payload.ad_hoc_service_name = adHocServiceName;
             } else {
                 payload.receivable_id = selectedReceivable!.id;
-                payload.renewal = renewal ? {
-                    has_contract: renewal.has_contract,
-                    contract_end_date: renewal.contract_end_date || null,
-                    payment_due_date: renewal.payment_due_date || null,
-                    pay_cycle_months: renewal.pay_cycle_months,
-                    billing_fee_month: renewal.billing_fee_month,
-                    amount_payable_period: renewal.amount_payable_period,
-                    standard_price: renewal.standard_price,
-                    discount_gap: renewal.discount_gap,
-                } : null;
-                payload.change_reasons = changeReasons;
+                payload.discounted_payable = discountedPayable;
+                payload.discount_reason = discountReason;
+
+                // Determine if we should send renewal info
+                const targetPayable = discountedPayable !== null ? discountedPayable : selectedReceivable!.amount_payable_period;
+                const paidSoFar = selectedReceivable!.amount_paid_period || 0;
+                const remainingToPay = targetPayable - paidSoFar;
+                const isFinishing = (parseFloat(paidAmount) || 0) >= remainingToPay - 0.01;
+
+                if (isFinishing || changedFields.length > 0) {
+                    payload.renewal = {
+                        has_contract: renewal!.has_contract,
+                        contract_end_date: renewal!.contract_end_date || null,
+                        payment_due_date: renewal!.payment_due_date || null,
+                        pay_cycle_months: renewal!.pay_cycle_months,
+                        billing_fee_month: renewal!.billing_fee_month,
+                        amount_payable_period: renewal!.amount_payable_period,
+                        standard_price: renewal!.standard_price,
+                        discount_gap: renewal!.discount_gap,
+                    };
+
+                    // Auto-fill change reasons for fields that have advanced but weren't manually changed
+                    const enhancedReasons = { ...changeReasons } as any;
+                    (['has_contract', 'contract_end_date', 'payment_due_date', 'pay_cycle_months', 'billing_fee_month', 'amount_payable_period', 'standard_price', 'discount_gap'] as const).forEach(field => {
+                        if (changedFields.includes(field as any)) {
+                            if (!enhancedReasons[field]) {
+                                enhancedReasons[field] = '系统自动顺延';
+                            }
+                        }
+                    });
+                    payload.change_reasons = enhancedReasons;
+                }
             }
 
             const res = await fetch('/api/finance/payment', {
@@ -742,7 +784,7 @@ function PaymentEntryContent() {
                                             <ChevronDown className={`w-4 h-4 text-emerald-400 transition-transform duration-200 ${showAdjustment ? 'rotate-180' : ''}`} />
                                         </div>
                                         <div className="text-xs text-emerald-700 font-medium">
-                                            {changedFields.includes('amount_payable_period') ? (
+                                            {discountedPayable !== selectedReceivable.amount_payable_period ? (
                                                 <span className="text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">已应用优惠</span>
                                             ) : (
                                                 <span>原应收：<span className="font-mono">{formatCurrency(selectedReceivable.amount_payable_period)}</span></span>
@@ -761,21 +803,21 @@ function PaymentEntryContent() {
                                                             type="number"
                                                             min="0"
                                                             step="0.01"
-                                                            value={renewal.amount_payable_period}
-                                                            onChange={e => updateRenewal('amount_payable_period', parseFloat(e.target.value) || 0)}
+                                                            value={discountedPayable ?? ''}
+                                                            onChange={e => setDiscountedPayable(parseFloat(e.target.value) || 0)}
                                                             className="w-full rounded-lg border border-emerald-200 py-2 pl-7 pr-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono bg-white shadow-sm"
                                                         />
                                                     </div>
                                                 </div>
-                                                {changedFields.includes('amount_payable_period') && (
+                                                {discountedPayable !== selectedReceivable.amount_payable_period && (
                                                     <div className="animate-in fade-in slide-in-from-top-1 duration-200">
                                                         <label className="block text-[11px] font-medium text-emerald-700 mb-1">优惠原因 (Required)</label>
                                                         <input
                                                             type="text"
                                                             placeholder="请填写优惠理由..."
-                                                            value={changeReasons.amount_payable_period || ''}
-                                                            onChange={e => updateReason('amount_payable_period', e.target.value)}
-                                                            className={`w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors shadow-sm ${!changeReasons.amount_payable_period ? 'border-amber-400 bg-white' : 'border-emerald-200 bg-white'}`}
+                                                            value={discountReason}
+                                                            onChange={e => setDiscountReason(e.target.value)}
+                                                            className={`w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors shadow-sm ${!discountReason ? 'border-amber-400 bg-white' : 'border-emerald-200 bg-white'}`}
                                                         />
                                                     </div>
                                                 )}
@@ -870,14 +912,24 @@ function PaymentEntryContent() {
                                     reason={changeReasons.contract_end_date || ''}
                                     onReasonChange={v => updateReason('contract_end_date', v)}
                                     original={selectedReceivable.contract_end_date ? formatDate(selectedReceivable.contract_end_date) : '未填写'}
-                                    hint={!renewal.has_contract ? '无合同也可填写预计截止日，留空表示无' : undefined}
+                                    hint={!renewal.has_contract ? '无合同也可填写预计截止日，留空表示无' : `默认 = 当前截止日 + ${renewal.pay_cycle_months} 个月`}
                                 >
-                                    <input
-                                        type="date"
-                                        value={renewal.contract_end_date}
-                                        onChange={e => updateRenewal('contract_end_date', e.target.value)}
-                                        className="w-full rounded-xl border border-slate-200 py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="date"
+                                            value={renewal.contract_end_date}
+                                            onChange={e => updateRenewal('contract_end_date', e.target.value)}
+                                            className="flex-1 rounded-xl border border-slate-200 py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm"
+                                        />
+                                        <button
+                                            type="button"
+                                            title="重置为自动计算值"
+                                            onClick={() => updateRenewal('contract_end_date', selectedReceivable.contract_end_date ? addMonths(selectedReceivable.contract_end_date, renewal.pay_cycle_months) : '')}
+                                            className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                        >
+                                            <RefreshCw className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </RenewalRow>
 
                                 {/* Pay cycle */}
@@ -897,8 +949,11 @@ function PaymentEntryContent() {
                                             onChange={e => {
                                                 const v = parseInt(e.target.value) || 1;
                                                 updateRenewal('pay_cycle_months', v);
-                                                // Auto-recalculate next due date
+                                                // Auto-recalculate next dates
                                                 updateRenewal('payment_due_date', addMonths(selectedReceivable.payment_due_date, v));
+                                                if (selectedReceivable.contract_end_date) {
+                                                    updateRenewal('contract_end_date', addMonths(selectedReceivable.contract_end_date, v));
+                                                }
                                             }}
                                             className="w-24 rounded-xl border border-slate-200 py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm"
                                         />
@@ -1044,8 +1099,14 @@ function PaymentEntryContent() {
                                         <div className="space-y-2.5">
                                             <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">本期应收</span>
-                                                <span className="font-semibold text-slate-800 font-mono">{formatCurrency(payable)}</span>
+                                                <span className="font-semibold text-slate-800 font-mono">{formatCurrency(selectedReceivable?.amount_payable_period)}</span>
                                             </div>
+                                            {discountedPayable !== null && selectedReceivable && Math.abs(discountedPayable - selectedReceivable.amount_payable_period) > 0.01 && (
+                                                <div className="flex justify-between items-center text-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <span className="text-slate-500">本期优惠</span>
+                                                    <span className="font-semibold text-red-600 font-mono">-{formatCurrency(selectedReceivable.amount_payable_period - discountedPayable)}</span>
+                                                </div>
+                                            )}
                                             <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">冲抵前已收</span>
                                                 <span className="font-semibold text-emerald-600 font-mono">{formatCurrency(paidSoFar)}</span>
@@ -1106,7 +1167,7 @@ function PaymentEntryContent() {
                                     )}
 
                                     <button
-                                        onClick={handleSubmit}
+                                        onClick={() => setShowConfirm(true)}
                                         disabled={!canSubmit || submitting || uploading}
                                         className={`w-full py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${canSubmit && !submitting && !uploading
                                             ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-200'
@@ -1131,6 +1192,74 @@ function PaymentEntryContent() {
                     </div>
                 </div>
             </div>
+
+            {/* Confirmation Modal */}
+            {showConfirm && selectedCustomer && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                            <h3 className="text-lg font-bold text-slate-900">确认收款信息</h3>
+                            <button onClick={() => setShowConfirm(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">客户名称</span>
+                                    <span className="font-semibold text-slate-900">{selectedCustomer.company_name}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">收款日期</span>
+                                    <span className="font-semibold text-slate-900">{paidAt}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">收款金额</span>
+                                    <span className="font-bold text-blue-600 text-lg font-mono">{formatCurrency(amountNum)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">收款方式</span>
+                                    <span className="font-semibold text-slate-900">{method}</span>
+                                </div>
+                                {!isAdHoc && renewal && (
+                                    <>
+                                        <div className="h-px bg-slate-100 my-2" />
+                                        <div className="flex justify-between text-sm text-violet-700">
+                                            <span className="opacity-70">下次收款日</span>
+                                            <span className="font-bold">{formatDate(renewal.payment_due_date)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm text-violet-700">
+                                            <span className="opacity-70">合同截止日</span>
+                                            <span className="font-bold">{formatDate(renewal.contract_end_date)}</span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
+                                <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-700 leading-relaxed">
+                                    请核对以上信息，提交后系统将自动更新财务底账并生成收款记录。
+                                </p>
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+                            <button
+                                onClick={() => setShowConfirm(false)}
+                                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={() => { setShowConfirm(false); handleSubmit(); }}
+                                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-200 transition-all"
+                            >
+                                确认提交
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -214,21 +214,35 @@ export default function FinanceCustomersPage() {
         setPage(1);
     };
 
-    // Calculate Paid Status visually
+    // Calculate Paid Status visually with aging logic
     const getPaidStatusInfo = (item: Receivable) => {
-        const _paid = Number(item.amount_paid_period || 0);
-        const _payable = Number(item.amount_payable_period || 0);
+        const _status = String(item.status || 'unpaid').toLowerCase();
+        const now = new Date();
+        const dueDate = new Date(item.payment_due_date);
 
-        if (_paid >= _payable && _payable > 0) {
-            return { label: '已付清', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: CheckCircle2 };
+        // Calculate days remaining
+        const diffDays = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+
+        if (_status === 'paid' || _status === 'pending') {
+            // Logic: 
+            // 1. If today is more than 45 days before the next due date, show as 'Waiting for Next Cycle'
+            // 2. If it's within 45 days, it becomes 'Unpaid' to warn the collection team.
+            if (diffDays <= 45) {
+                return { label: '未付款', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200', icon: Wallet };
+            }
+            return { label: '待收下期', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: CheckCircle2 };
         }
-        if (_paid > 0 && _paid < _payable) {
+
+        if (_status === 'partial') {
             return { label: '部分付款', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', icon: TrendingUp };
         }
-        if (isOverdue(item.payment_due_date)) {
-            return { label: '未付款(逾期)', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', icon: AlertCircle };
+
+        // For Unpaid records
+        if (diffDays < 0) {
+            return { label: '已逾期', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', icon: AlertCircle };
         }
-        return { label: '未付款', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', icon: Wallet };
+
+        return { label: '未付款', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200', icon: Wallet };
     };
 
     return (

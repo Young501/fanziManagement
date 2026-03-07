@@ -21,7 +21,7 @@ export async function GET(_request: NextRequest) {
 
         const { data, error } = await supabase
             .from('company_receivables')
-            .select('amount_payable_period, amount_paid_period, status, payment_due_date, customer_id');
+            .select('id, amount_payable_period, amount_paid_period, status, payment_due_date, customer_id');
 
         if (error) {
             console.error('[finance customers stats API] error:', error);
@@ -31,21 +31,46 @@ export async function GET(_request: NextRequest) {
         let totalPayable = 0;
         let totalPaid = 0;
 
+        // Fetch payment records to calculate true paid amount
+        const recIds = data?.map(r => r.id) || [];
+        const { data: allPayments } = await supabase
+            .from('payment_records')
+            .select('receivable_id, paid_amount')
+            .in('receivable_id', recIds);
+
+        const paymentMap: Record<string, number> = {};
+        allPayments?.forEach(p => {
+            paymentMap[p.receivable_id] = (paymentMap[p.receivable_id] || 0) + Number(p.paid_amount || 0);
+        });
+
         const arrearsCustomerIds = new Set<string>();
         const now = Date.now();
 
         for (const r of data || []) {
-            totalPayable += Number(r.amount_payable_period || 0);
-            totalPaid += Number(r.amount_paid_period || 0);
-
-            const paid = Number(r.amount_paid_period || 0);
             const payable = Number(r.amount_payable_period || 0);
+            totalPayable += payable;
+
+            const sumPaid = paymentMap[(r as any).id] || 0;
+            const statusText = String(r.status || 'unpaid').toLowerCase();
+            const isActuallyPaid = statusText === 'paid';
+            const isPending = statusText === 'pending';
+
+            let effectivePaid = sumPaid;
+            if (isActuallyPaid) {
+                effectivePaid = sumPaid > 0 ? sumPaid : payable;
+            } else if (isPending && sumPaid === 0) {
+                effectivePaid = Number((r as any).current_receipt_amount || 0);
+            }
+
+            totalPaid += effectivePaid;
+
             const isOverdue = r.payment_due_date ? new Date(r.payment_due_date).getTime() < now : false;
+            const dueDateTs = r.payment_due_date ? new Date(r.payment_due_date).getTime() : 0;
+            const isWithin45Days = dueDateTs > 0 && (dueDateTs - now) <= (45 * 24 * 60 * 60 * 1000);
 
-            const statusText = String(r.status || '').toLowerCase();
-            const explicitlyArrears = statusText.includes('arrear') || statusText.includes('overdue') || statusText.includes('unpaid');
-
-            if (explicitlyArrears || (paid < payable && isOverdue)) {
+            // Arrears should only count records that are TRULY unpaid and PAST due date.
+            // Even if a 'paid' record is within 45 days, it's not 'Arrears' (欠费) yet.
+            if (!isActuallyPaid && !isPending && isOverdue) {
                 if (r.customer_id) arrearsCustomerIds.add(r.customer_id);
             }
         }
