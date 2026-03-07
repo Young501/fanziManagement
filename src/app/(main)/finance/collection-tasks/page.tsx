@@ -242,7 +242,7 @@ export default function CollectionTasksPage() {
                     } : null
                 };
             });
-            alert('调价成功');
+            alert('优惠提交成功');
         } catch (err: any) {
             alert(err.message);
         } finally {
@@ -761,7 +761,7 @@ export default function CollectionTasksPage() {
                             {/* Price Negotiation Section */}
                             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
                                 <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-                                    <TrendingDown className="w-4 h-4 text-emerald-500" /> 协商调价 (Negotiate Price)
+                                    <TrendingDown className="w-4 h-4 text-emerald-500" /> 协商优惠 (Negotiate Discount)
                                 </p>
                                 <div className="space-y-3">
                                     <div>
@@ -778,12 +778,12 @@ export default function CollectionTasksPage() {
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-xs text-slate-500 mb-1">价格调整理由 (Reason - Required)</label>
+                                        <label className="block text-xs text-slate-500 mb-1">价格优惠理由 (Reason - Required)</label>
                                         <input
                                             type="text"
                                             value={adjustReason}
                                             onChange={e => setAdjustReason(e.target.value)}
-                                            placeholder="例如：大客户优惠、逾期协商减免..."
+                                            placeholder="例如：大客户优惠、金额抹零、协商减免..."
                                             className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
                                         />
                                     </div>
@@ -795,7 +795,7 @@ export default function CollectionTasksPage() {
                                         )}
                                         className="w-full text-sm bg-emerald-600 text-white rounded-lg py-2 shadow-sm hover:bg-emerald-700 disabled:opacity-40 transition-colors font-medium"
                                     >
-                                        {savingNegotiation ? '保存中...' : '提交调价申请'}
+                                        {savingNegotiation ? '保存中...' : '提交优惠申请'}
                                     </button>
                                 </div>
                             </div>

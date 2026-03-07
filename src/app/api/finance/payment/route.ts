@@ -160,8 +160,8 @@ export async function POST(request: NextRequest) {
         const newStatus = calcStatus(newPaid, negotiatedPayable, dueDateForStatus);
 
         const receivableUpdates: Record<string, unknown> = {
-            amount_paid_period: newPaid,
-            status: newStatus,
+            amount_paid_period: renewal ? 0 : newPaid, // Reset for next cycle if renewal info is provided
+            status: renewal ? 'unpaid' : newStatus,    // Next cycle starts as unpaid
         };
 
         const changeLogs: Array<{

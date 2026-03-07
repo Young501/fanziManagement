@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
-    Search, CheckCircle2, AlertCircle, Wallet, TrendingDown, ChevronRight,
+    Search, CheckCircle2, AlertCircle, Wallet, TrendingDown, ChevronRight, ChevronDown,
     X, CreditCard, Calendar, Banknote, FileText, Loader2, CircleDot,
     ImagePlus, Image as ImageIcon, Trash2, RefreshCw
 } from 'lucide-react';
@@ -157,6 +157,7 @@ function PaymentEntryContent() {
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [submitSuccess, setSubmitSuccess] = useState(false);
+    const [showAdjustment, setShowAdjustment] = useState(false);
 
     // Initialize renewal defaults when receivable changes
     useEffect(() => {
@@ -218,7 +219,19 @@ function PaymentEntryContent() {
     const renewalValid = changedFields.every(f => !!changeReasons[f]?.trim());
 
     const updateRenewal = <K extends keyof RenewalFields>(key: K, val: RenewalFields[K]) => {
-        setRenewal(prev => prev ? { ...prev, [key]: val } : null);
+        setRenewal(prev => {
+            if (!prev) return null;
+            const next = { ...prev, [key]: val };
+
+            // Auto-calculate amount_payable_period if cycle or monthly fee changes
+            if (key === 'pay_cycle_months' || key === 'billing_fee_month') {
+                const cycle = key === 'pay_cycle_months' ? (val as number) : next.pay_cycle_months;
+                const fee = key === 'billing_fee_month' ? (val as number) : next.billing_fee_month;
+                next.amount_payable_period = Math.round(fee * cycle * 100) / 100;
+            }
+
+            return next;
+        });
     };
 
     const updateReason = (key: keyof RenewalFields, val: string) => {
@@ -719,47 +732,59 @@ function PaymentEntryContent() {
                             {/* Negotiation / Price Adjustment (Moved from Step E) */}
                             {!isAdHoc && selectedReceivable && renewal && (
                                 <div className="mt-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div
+                                        className="flex items-center justify-between cursor-pointer group"
+                                        onClick={() => setShowAdjustment(!showAdjustment)}
+                                    >
                                         <div className="flex items-center gap-2">
                                             <TrendingDown className="w-4 h-4 text-emerald-600" />
-                                            <label className="text-sm font-semibold text-emerald-900">本次收款协商调价 (Optional)</label>
+                                            <label className="text-sm font-semibold text-emerald-900 cursor-pointer">本次收款协商优惠 (Optional)</label>
+                                            <ChevronDown className={`w-4 h-4 text-emerald-400 transition-transform duration-200 ${showAdjustment ? 'rotate-180' : ''}`} />
                                         </div>
-                                        <div className="text-xs text-emerald-700">
-                                            原应收：<span className="font-mono font-bold">{formatCurrency(selectedReceivable.amount_payable_period)}</span>
+                                        <div className="text-xs text-emerald-700 font-medium">
+                                            {changedFields.includes('amount_payable_period') ? (
+                                                <span className="text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">已应用优惠</span>
+                                            ) : (
+                                                <span>原应收：<span className="font-mono">{formatCurrency(selectedReceivable.amount_payable_period)}</span></span>
+                                            )}
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-[11px] font-medium text-emerald-700 mb-1">协商后的本期应收总额</label>
-                                            <div className="relative">
-                                                <span className="absolute inset-y-0 left-3 flex items-center text-emerald-500 text-sm">¥</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={renewal.amount_payable_period}
-                                                    onChange={e => updateRenewal('amount_payable_period', parseFloat(e.target.value) || 0)}
-                                                    className="w-full rounded-lg border border-emerald-200 py-2 pl-7 pr-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono bg-white shadow-sm"
-                                                />
+                                    {showAdjustment && (
+                                        <div className="animate-in fade-in slide-in-from-top-1 duration-200 space-y-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-[11px] font-medium text-emerald-700 mb-1">协商后的本期应收总额</label>
+                                                    <div className="relative">
+                                                        <span className="absolute inset-y-0 left-3 flex items-center text-emerald-500 text-sm">¥</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={renewal.amount_payable_period}
+                                                            onChange={e => updateRenewal('amount_payable_period', parseFloat(e.target.value) || 0)}
+                                                            className="w-full rounded-lg border border-emerald-200 py-2 pl-7 pr-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono bg-white shadow-sm"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {changedFields.includes('amount_payable_period') && (
+                                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                                        <label className="block text-[11px] font-medium text-emerald-700 mb-1">优惠原因 (Required)</label>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="请填写优惠理由..."
+                                                            value={changeReasons.amount_payable_period || ''}
+                                                            onChange={e => updateReason('amount_payable_period', e.target.value)}
+                                                            className={`w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors shadow-sm ${!changeReasons.amount_payable_period ? 'border-amber-400 bg-white' : 'border-emerald-200 bg-white'}`}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
+                                            <p className="text-[10px] text-emerald-600 leading-relaxed italic">
+                                                提示：若本期实收金额因特殊原因产生变动，请点击上方“协商优惠”进行调整，下一期将自动恢复合同原价。
+                                            </p>
                                         </div>
-                                        {changedFields.includes('amount_payable_period') && (
-                                            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                                                <label className="block text-[11px] font-medium text-emerald-700 mb-1">调价原因 (Required)</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="请填写调价理由..."
-                                                    value={changeReasons.amount_payable_period || ''}
-                                                    onChange={e => updateReason('amount_payable_period', e.target.value)}
-                                                    className={`w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors shadow-sm ${!changeReasons.amount_payable_period ? 'border-amber-400 bg-white' : 'border-emerald-200 bg-white'}`}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <p className="text-[10px] text-emerald-600 leading-relaxed italic">
-                                        提示：若实收金额与系统默认应收不符，请先在此修改应收总额，系统将自动核算冲抵结果。
-                                    </p>
+                                    )}
                                 </div>
                             )}
 
