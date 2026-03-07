@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Ignore schema tools and sensitive DB test scripts
+dump_schema.js
+dump_schema_info.js
+get_openapi_schema.js
+test_schema.js
+
+# Ignore schema data outputs
+*schema*.json
+*schema*.sql
+dump*.json
+dump*.sql

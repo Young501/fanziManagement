@@ -19,16 +19,26 @@ export async function GET() {
 
         if (totalError) throw totalError;
 
-        // 2. Get current month's customers
-        // User requested: "平台刚开 客户都是直接导入进去的 所以本月新增用户是0" 
-        // So we hardcode this to 0
-        const thisMonthCount = 0;
+        // 2. Get current month's and last month's customers dynamically
+        const now = new Date();
+        const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+        // 0th day of current month gets last day of previous month
+        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).toISOString();
 
-        // 3. Get last month's customers
-        const lastMonthCount = 0; // Also 0 for consistency
+        const { count: thisMonthCount } = await supabase
+            .from('customers')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', thisMonthStart);
+
+        const { count: lastMonthCount } = await supabase
+            .from('customers')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', lastMonthStart)
+            .lte('created_at', lastMonthEnd);
 
         // The change compared to last month
-        const monthlyChange = 0;
+        const monthlyChange = (thisMonthCount || 0) - (lastMonthCount || 0);
 
         return NextResponse.json({
             totalCustomers: totalCustomers || 0,

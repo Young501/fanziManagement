@@ -1,13 +1,14 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
-    Search, CheckCircle2, AlertCircle, Wallet, ChevronRight,
+    Search, CheckCircle2, AlertCircle, Wallet, TrendingDown, ChevronRight,
     X, CreditCard, Calendar, Banknote, FileText, Loader2, CircleDot,
     ImagePlus, Image as ImageIcon, Trash2, RefreshCw
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
+import { MaskedContact } from '@/components/ui/MaskedContact';
 
 // Compress an image File to JPEG via Canvas, max width 1200px, quality 0.75
 async function compressImage(file: File, maxW = 1200, quality = 0.75): Promise<Blob> {
@@ -64,6 +65,7 @@ type Receivable = {
     standard_price: number | null;
     discount_gap: number | null;
     status: string;
+    receipt_note?: string | null;
 };
 
 type RenewalFields = {
@@ -72,6 +74,7 @@ type RenewalFields = {
     payment_due_date: string;
     pay_cycle_months: number;
     billing_fee_month: number;
+    amount_payable_period: number;
     standard_price: number;
     discount_gap: number;
 };
@@ -82,6 +85,7 @@ const RENEWAL_FIELD_LABELS: Record<keyof RenewalFields, string> = {
     payment_due_date: '下次收款日',
     pay_cycle_months: '付款周期(月)',
     billing_fee_month: '月收费金额',
+    amount_payable_period: '本期应收金额',
     standard_price: '标准价格',
     discount_gap: '优惠差额',
 };
@@ -133,7 +137,9 @@ function PaymentEntryContent() {
     const [receivablesLoading, setReceivablesLoading] = useState(false);
     const [selectedReceivable, setSelectedReceivable] = useState<Receivable | null>(null);
 
-    // Step C: Payment form
+    // Step C: Payment form & Mode
+    const [isAdHoc, setIsAdHoc] = useState(false);
+    const [adHocServiceName, setAdHocServiceName] = useState('');
     const [paidAt, setPaidAt] = useState(() => new Date().toISOString().split('T')[0]);
     const [paidAmount, setPaidAmount] = useState('');
     const [method, setMethod] = useState('转账');
@@ -162,6 +168,7 @@ function PaymentEntryContent() {
             payment_due_date: addMonths(selectedReceivable.payment_due_date, cycle),
             pay_cycle_months: cycle,
             billing_fee_month: Number(selectedReceivable.billing_fee_month || 0),
+            amount_payable_period: Number(selectedReceivable.amount_payable_period || 0),
             standard_price: Number(selectedReceivable.standard_price || 0),
             discount_gap: Number(selectedReceivable.discount_gap || 0),
         });
@@ -202,6 +209,7 @@ function PaymentEntryContent() {
         if (renewal.payment_due_date && renewal.payment_due_date !== autoNext) changed.push('payment_due_date');
         if (renewal.pay_cycle_months !== (selectedReceivable.pay_cycle_months || 1)) changed.push('pay_cycle_months');
         if (renewal.billing_fee_month !== Number(selectedReceivable.billing_fee_month || 0)) changed.push('billing_fee_month');
+        if (renewal.amount_payable_period !== Number(selectedReceivable.amount_payable_period || 0)) changed.push('amount_payable_period');
         if (renewal.standard_price !== Number(selectedReceivable.standard_price || 0)) changed.push('standard_price');
         if (renewal.discount_gap !== Number(selectedReceivable.discount_gap || 0)) changed.push('discount_gap');
         return changed;
@@ -292,12 +300,14 @@ function PaymentEntryContent() {
         setPaidAmount('');
         setSubmitError(null);
         setSubmitSuccess(false);
+        setIsAdHoc(false);
+        setAdHocServiceName('');
         clearScreenshot();
     };
 
     // Preview values
+    const payable = renewal?.amount_payable_period ?? Number(selectedReceivable?.amount_payable_period || 0);
     const paidSoFar = Number(selectedReceivable?.amount_paid_period || 0);
-    const payable = Number(selectedReceivable?.amount_payable_period || 0);
     const remaining = Math.max(0, payable - paidSoFar);
     const amountNum = parseFloat(paidAmount) || 0;
     const afterPaid = paidSoFar + amountNum;
@@ -306,13 +316,23 @@ function PaymentEntryContent() {
         ? calcDerivedStatus(afterPaid, payable, selectedReceivable.payment_due_date)
         : null;
 
-    const canSubmit =
-        selectedCustomer &&
-        selectedReceivable &&
-        amountNum > 0 &&
-        amountNum <= remaining + 0.01 &&
-        paidAt &&
-        renewalValid;
+    const canSubmit = useMemo(() => {
+        if (!selectedCustomer) return false;
+        if (!paidAt) return false;
+        const amountNum = parseFloat(paidAmount) || 0;
+        if (amountNum <= 0) return false;
+
+        if (isAdHoc) {
+            if (!adHocServiceName.trim()) return false;
+            return true;
+        } else {
+            if (!selectedReceivable) return false;
+            // Use the negotiated remaining amount for alignment with UI and backend
+            if (amountNum > remaining + 0.01) return false;
+            if (!renewalValid) return false;
+            return true;
+        }
+    }, [selectedCustomer, isAdHoc, adHocServiceName, selectedReceivable, paidAt, paidAmount, renewalValid, remaining]);
 
     const handleSubmit = async () => {
         if (!canSubmit) return;
@@ -340,28 +360,37 @@ function PaymentEntryContent() {
                 }
             }
 
+            const payload: any = {
+                customer_id: selectedCustomer!.id,
+                paid_at: paidAt,
+                paid_amount: parseFloat(paidAmount),
+                method: method || null,
+                note: note || null,
+                screenshot: screenshotUrl,
+                is_ad_hoc: isAdHoc,
+            };
+
+            if (isAdHoc) {
+                payload.ad_hoc_service_name = adHocServiceName;
+            } else {
+                payload.receivable_id = selectedReceivable!.id;
+                payload.renewal = renewal ? {
+                    has_contract: renewal.has_contract,
+                    contract_end_date: renewal.contract_end_date || null,
+                    payment_due_date: renewal.payment_due_date || null,
+                    pay_cycle_months: renewal.pay_cycle_months,
+                    billing_fee_month: renewal.billing_fee_month,
+                    amount_payable_period: renewal.amount_payable_period,
+                    standard_price: renewal.standard_price,
+                    discount_gap: renewal.discount_gap,
+                } : null;
+                payload.change_reasons = changeReasons;
+            }
+
             const res = await fetch('/api/finance/payment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    customer_id: selectedCustomer!.id,
-                    receivable_id: selectedReceivable!.id,
-                    paid_at: paidAt,
-                    paid_amount: amountNum,
-                    method: method || null,
-                    note: note || null,
-                    screenshot: screenshotUrl,
-                    renewal: renewal ? {
-                        has_contract: renewal.has_contract,
-                        contract_end_date: renewal.contract_end_date || null,
-                        payment_due_date: renewal.payment_due_date || null,
-                        pay_cycle_months: renewal.pay_cycle_months,
-                        billing_fee_month: renewal.billing_fee_month,
-                        standard_price: renewal.standard_price,
-                        discount_gap: renewal.discount_gap,
-                    } : null,
-                    change_reasons: changeReasons,
-                }),
+                body: JSON.stringify(payload),
             });
             const json = await res.json();
             if (!res.ok || json.error) {
@@ -453,7 +482,13 @@ function PaymentEntryContent() {
                                             >
                                                 <div>
                                                     <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">{c.company_name}</p>
-                                                    {c.contact_person && <p className="text-xs text-slate-500 mt-0.5">{c.contact_person} · {c.contact_info || ''}</p>}
+                                                    {(c.contact_person || c.contact_info) && (
+                                                        <div className="text-xs text-slate-500 mt-0.5 flex gap-1">
+                                                            {c.contact_person && <span>{c.contact_person}</span>}
+                                                            {c.contact_person && c.contact_info && <span>·</span>}
+                                                            {c.contact_info && <MaskedContact contact={c.contact_info} />}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500" />
                                             </button>
@@ -474,10 +509,12 @@ function PaymentEntryContent() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-semibold text-blue-900 truncate">{selectedCustomer.company_name}</p>
-                                        <p className="text-xs text-blue-700 mt-0.5">
+                                        <p className="text-xs text-blue-700 mt-0.5 flex gap-1 items-center">
                                             {selectedCustomer.contact_person && <span>{selectedCustomer.contact_person}</span>}
-                                            {selectedCustomer.contact_info && <span> · {selectedCustomer.contact_info}</span>}
-                                            {selectedCustomer.service_manager && <span> · 财务: {selectedCustomer.service_manager}</span>}
+                                            {selectedCustomer.contact_person && selectedCustomer.contact_info && <span>·</span>}
+                                            {selectedCustomer.contact_info && <MaskedContact contact={selectedCustomer.contact_info} className="!text-blue-700" iconClassName="w-3.5 h-3.5 !text-blue-500" />}
+                                            {selectedCustomer.contact_info && selectedCustomer.service_manager && <span>·</span>}
+                                            {selectedCustomer.service_manager && <span>财务: {selectedCustomer.service_manager}</span>}
                                         </p>
                                     </div>
                                     <CheckCircle2 className="w-5 h-5 text-blue-500 flex-shrink-0" />
@@ -486,8 +523,28 @@ function PaymentEntryContent() {
                         </div>
                     </div>
 
-                    {/* Step B: Receivable selection */}
+                    {/* Mode Toggle */}
                     {selectedCustomer && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex gap-2">
+                            <button
+                                onClick={() => { setIsAdHoc(false); setSubmitError(null); }}
+                                className={`flex-1 flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${!isAdHoc ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                <span className="font-semibold text-sm">常规账单收款</span>
+                                <span className="text-xs mt-0.5 opacity-80">勾销已生成的财务应收</span>
+                            </button>
+                            <button
+                                onClick={() => { setIsAdHoc(true); setSelectedReceivable(null); setSubmitError(null); }}
+                                className={`flex-1 flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${isAdHoc ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                <span className="font-semibold text-sm">一次性项目收款</span>
+                                <span className="text-xs mt-0.5 opacity-80">代办费、工本费等非周期临时入账</span>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Step B: Receivable selection (Hidden if AdHoc) */}
+                    {selectedCustomer && !isAdHoc && (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">B</div>
@@ -530,10 +587,17 @@ function PaymentEntryContent() {
                                                                 {isSelected && <CircleDot className="w-2 h-2 text-white" />}
                                                             </div>
                                                         </td>
-                                                        <td className={`py-3 px-4 font-medium ${isOverdue(r.payment_due_date) && rem > 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                                                        <td className={`py-3 px-4 font-medium flex items-center gap-2 ${isOverdue(r.payment_due_date) && rem > 0 ? 'text-red-600' : 'text-slate-700'}`}>
                                                             {formatDate(r.payment_due_date)}
+                                                            {r.receipt_note && r.status === 'paid' && !r.billing_fee_month && (
+                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">一次性</span>
+                                                            )}
                                                         </td>
-                                                        <td className="py-3 px-4 text-right text-slate-600 font-mono">{formatCurrency(r.billing_fee_month)}</td>
+                                                        <td className="py-3 px-4 text-right text-slate-600 font-mono">
+                                                            {r.billing_fee_month ? formatCurrency(r.billing_fee_month) : (
+                                                                <span className="text-[11px] text-slate-400 truncate max-w-[100px] inline-block align-bottom">{r.receipt_note || '-'}</span>
+                                                            )}
+                                                        </td>
                                                         <td className="py-3 px-4 text-right font-semibold text-slate-800 font-mono">{formatCurrency(r.amount_payable_period)}</td>
                                                         <td className="py-3 px-4 text-right text-emerald-600 font-mono">{formatCurrency(r.amount_paid_period)}</td>
                                                         <td className="py-3 px-4 text-right font-bold font-mono text-slate-900">{formatCurrency(Math.max(0, rem))}</td>
@@ -553,13 +617,30 @@ function PaymentEntryContent() {
                     )}
 
                     {/* Step C: Payment form */}
-                    {selectedCustomer && selectedReceivable && (
+                    {selectedCustomer && (isAdHoc || selectedReceivable) && (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">C</div>
+                                <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold ${isAdHoc ? 'bg-amber-500' : 'bg-blue-600'}`}>C</div>
                                 <h2 className="text-sm font-semibold text-slate-800">填写收款信息</h2>
                             </div>
                             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Ad Hoc Service Name (Only visible if AdHoc) */}
+                                {isAdHoc && (
+                                    <div className="sm:col-span-2 mb-2 p-4 bg-amber-50 rounded-xl border border-amber-100">
+                                        <label className="block text-sm font-medium text-amber-900 mb-1.5 flex items-center gap-1.5">
+                                            <FileText className="w-4 h-4 text-amber-500" /> 服务项目名称 / 名目名称 <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={adHocServiceName}
+                                            onChange={e => { setAdHocServiceName(e.target.value); setSubmitError(null); }}
+                                            placeholder="如：工商代办费、公章印制费"
+                                            className="w-full rounded-xl border border-amber-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors text-sm"
+                                        />
+                                        <p className="mt-1.5 text-xs text-amber-700">提交后将自动在后台挂账一笔同名服务，并标记为已付清，保证账务完整对应。</p>
+                                    </div>
+                                )}
+
                                 {/* Paid date */}
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
@@ -584,24 +665,26 @@ function PaymentEntryContent() {
                                             type="number"
                                             min="0"
                                             step="0.01"
-                                            placeholder={`最多 ${remaining.toFixed(2)}`}
+                                            placeholder={!isAdHoc ? `最多 ${remaining.toFixed(2)}` : '输入收款总额'}
                                             value={paidAmount}
                                             onChange={e => { setPaidAmount(e.target.value); setSubmitError(null); setSubmitSuccess(false); }}
-                                            className={`w-full rounded-xl border py-2.5 pl-8 pr-3 text-slate-900 focus:outline-none focus:ring-2 transition-colors text-sm font-mono ${amountNum > remaining + 0.01 ? 'border-red-300 focus:ring-red-400 bg-red-50' : 'border-slate-200 focus:ring-blue-600'}`}
+                                            className={`w-full rounded-xl border py-2.5 pl-8 pr-3 text-slate-900 focus:outline-none focus:ring-2 transition-colors text-sm font-mono ${!isAdHoc && parseFloat(paidAmount || '0') > remaining + 0.01 ? 'border-red-300 focus:ring-red-400 bg-red-50' : 'border-slate-200 focus:ring-blue-600'}`}
                                         />
                                     </div>
-                                    {amountNum > remaining + 0.01 && (
+                                    {!isAdHoc && parseFloat(paidAmount || '0') > remaining + 0.01 && (
                                         <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
                                             <AlertCircle className="w-3.5 h-3.5" /> 超过未收金额 {formatCurrency(remaining)}
                                         </p>
                                     )}
-                                    <button
-                                        type="button"
-                                        onClick={() => setPaidAmount(remaining.toFixed(2))}
-                                        className="mt-1 text-xs text-blue-600 hover:underline"
-                                    >
-                                        填入全部未收金额 ({formatCurrency(remaining)})
-                                    </button>
+                                    {!isAdHoc && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPaidAmount(remaining.toFixed(2))}
+                                            className="mt-1 text-xs text-blue-600 hover:underline"
+                                        >
+                                            填入全部未收金额 ({formatCurrency(remaining)})
+                                        </button>
+                                    )}
                                 </div>
 
                                 {/* Method */}
@@ -631,7 +714,56 @@ function PaymentEntryContent() {
                                         className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-sm"
                                     />
                                 </div>
+                            </div>
 
+                            {/* Negotiation / Price Adjustment (Moved from Step E) */}
+                            {!isAdHoc && selectedReceivable && renewal && (
+                                <div className="mt-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <TrendingDown className="w-4 h-4 text-emerald-600" />
+                                            <label className="text-sm font-semibold text-emerald-900">本次收款协商调价 (Optional)</label>
+                                        </div>
+                                        <div className="text-xs text-emerald-700">
+                                            原应收：<span className="font-mono font-bold">{formatCurrency(selectedReceivable.amount_payable_period)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[11px] font-medium text-emerald-700 mb-1">协商后的本期应收总额</label>
+                                            <div className="relative">
+                                                <span className="absolute inset-y-0 left-3 flex items-center text-emerald-500 text-sm">¥</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={renewal.amount_payable_period}
+                                                    onChange={e => updateRenewal('amount_payable_period', parseFloat(e.target.value) || 0)}
+                                                    className="w-full rounded-lg border border-emerald-200 py-2 pl-7 pr-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono bg-white shadow-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                        {changedFields.includes('amount_payable_period') && (
+                                            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                                <label className="block text-[11px] font-medium text-emerald-700 mb-1">调价原因 (Required)</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="请填写调价理由..."
+                                                    value={changeReasons.amount_payable_period || ''}
+                                                    onChange={e => updateReason('amount_payable_period', e.target.value)}
+                                                    className={`w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors shadow-sm ${!changeReasons.amount_payable_period ? 'border-amber-400 bg-white' : 'border-emerald-200 bg-white'}`}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-emerald-600 leading-relaxed italic">
+                                        提示：若实收金额与系统默认应收不符，请先在此修改应收总额，系统将自动核算冲抵结果。
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100">
                                 {/* Screenshot upload */}
                                 <div className="sm:col-span-2">
                                     <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
@@ -669,8 +801,8 @@ function PaymentEntryContent() {
                         </div>
                     )}
 
-                    {/* Step E: Renewal & Contract Confirmation */}
-                    {selectedCustomer && selectedReceivable && renewal && (
+                    {/* Step E: Renewal & Contract Confirmation (Hidden if AdHoc) */}
+                    {selectedCustomer && !isAdHoc && selectedReceivable && renewal && (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-full bg-violet-600 text-white flex items-center justify-center text-xs font-bold">E</div>
@@ -855,46 +987,64 @@ function PaymentEntryContent() {
                 <div className="space-y-5">
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden sticky top-6">
                         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">D</div>
-                            <h2 className="text-sm font-semibold text-slate-800">预览冲抵结果</h2>
+                            <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold ${isAdHoc ? 'bg-amber-500' : 'bg-blue-600'}`}>D</div>
+                            <h2 className="text-sm font-semibold text-slate-800">
+                                {isAdHoc ? '预览新增收款' : '预览冲抵结果'}
+                            </h2>
                         </div>
 
                         <div className="p-5 space-y-4">
-                            {!selectedReceivable ? (
+                            {!selectedReceivable && !isAdHoc ? (
                                 <div className="text-center py-6 text-slate-400">
                                     <Wallet className="w-10 h-10 mx-auto mb-2 opacity-30" />
                                     <p className="text-xs">请先选择客户和账单</p>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="space-y-2.5">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500">本期应收</span>
-                                            <span className="font-semibold text-slate-800 font-mono">{formatCurrency(payable)}</span>
+                                    {isAdHoc ? (
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center text-sm border-b border-dashed border-slate-200 pb-3">
+                                                <span className="text-slate-500">本次收款金额</span>
+                                                <span className={`font-bold font-mono text-xl ${amountNum > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+                                                    {amountNum > 0 ? formatCurrency(amountNum) : '—'}
+                                                </span>
+                                            </div>
+                                            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                                                <p className="text-xs text-amber-700 leading-relaxed">
+                                                    提交后，系统将自动基于您填写的金额和名目，生成一笔独立的底层账单，并自动标记为<span className="font-semibold">“已全额付清”</span>。
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500">冲抵前已收</span>
-                                            <span className="font-semibold text-emerald-600 font-mono">{formatCurrency(paidSoFar)}</span>
+                                    ) : (
+                                        <div className="space-y-2.5">
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-500">本期应收</span>
+                                                <span className="font-semibold text-slate-800 font-mono">{formatCurrency(payable)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-500">冲抵前已收</span>
+                                                <span className="font-semibold text-emerald-600 font-mono">{formatCurrency(paidSoFar)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm border-t border-dashed border-slate-200 pt-2.5">
+                                                <span className="text-slate-500">本次收款</span>
+                                                <span className={`font-bold font-mono text-base ${amountNum > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+                                                    {amountNum > 0 ? formatCurrency(amountNum) : '—'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm border-t border-slate-200 pt-2.5">
+                                                <span className="font-medium text-slate-700">冲抵后已收</span>
+                                                <span className="font-bold text-emerald-600 font-mono">{formatCurrency(afterPaid)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="font-medium text-slate-700">冲抵后未收</span>
+                                                <span className={`font-bold font-mono ${afterRemaining > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                    {formatCurrency(afterRemaining)}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between items-center text-sm border-t border-dashed border-slate-200 pt-2.5">
-                                            <span className="text-slate-500">本次收款</span>
-                                            <span className={`font-bold font-mono text-base ${amountNum > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
-                                                {amountNum > 0 ? formatCurrency(amountNum) : '—'}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm border-t border-slate-200 pt-2.5">
-                                            <span className="font-medium text-slate-700">冲抵后已收</span>
-                                            <span className="font-bold text-emerald-600 font-mono">{formatCurrency(afterPaid)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="font-medium text-slate-700">冲抵后未收</span>
-                                            <span className={`font-bold font-mono ${afterRemaining > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                {formatCurrency(afterRemaining)}
-                                            </span>
-                                        </div>
-                                    </div>
+                                    )}
 
-                                    {afterStatus && amountNum > 0 && (
+                                    {afterStatus && amountNum > 0 && !isAdHoc && (
                                         <div className="flex items-center justify-between bg-slate-50 rounded-xl p-3 mt-2">
                                             <span className="text-xs text-slate-500">状态将变为</span>
                                             <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${afterStatus.color} ${afterStatus.bg}`}>
@@ -904,12 +1054,12 @@ function PaymentEntryContent() {
                                     )}
 
                                     {/* Renewal summary */}
-                                    {renewal && changedFields.length > 0 && (
+                                    {renewal && changedFields.length > 0 && !isAdHoc && (
                                         <div className="border-t border-slate-100 pt-3 space-y-1.5">
                                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">变更摘要</p>
                                             {changedFields.map(f => (
                                                 <div key={f} className="flex justify-between items-center text-xs">
-                                                    <span className="text-slate-500">{RENEWAL_FIELD_LABELS[f]}</span>
+                                                    <span className="text-slate-500">{RENEWAL_FIELD_LABELS[f as keyof typeof RENEWAL_FIELD_LABELS]}</span>
                                                     <span className="font-medium text-amber-700">已修改</span>
                                                 </div>
                                             ))}
@@ -926,7 +1076,7 @@ function PaymentEntryContent() {
                                     {submitSuccess && (
                                         <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
                                             <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                                            <span>收款录入成功！账单已更新。</span>
+                                            <span>收款录入成功！系统已自动生成底层账单记录。</span>
                                         </div>
                                     )}
 
@@ -945,8 +1095,8 @@ function PaymentEntryContent() {
                                     {!canSubmit && !submitSuccess && (
                                         <p className="text-xs text-center text-slate-400">
                                             {!amountNum ? '请输入收款金额'
-                                                : amountNum > remaining + 0.01 ? '金额超出未收余额'
-                                                    : !renewalValid ? '请填写所有变更原因'
+                                                : !isAdHoc && amountNum > remaining + 0.01 ? '金额超出未收余额'
+                                                    : !isAdHoc && !renewalValid ? '请填写所有变更原因'
                                                         : '信息填写完整后可提交'}
                                         </p>
                                     )}

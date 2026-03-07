@@ -1,12 +1,16 @@
-'use server'
+﻿'use server'
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 
 export async function login(formData: FormData) {
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
+    const email = String(formData.get('email') ?? '').trim()
+    const password = String(formData.get('password') ?? '')
+
+    if (!email || !password) {
+        return { error: '请输入邮箱和密码' }
+    }
 
     const supabase = await createClient()
 
@@ -16,7 +20,8 @@ export async function login(formData: FormData) {
     })
 
     if (error) {
-        return { error: '登录失败，请检查账号和密码：' + error.message }
+        // Do not expose low-level auth error details to end users.
+        return { error: '登录失败，请检查账号和密码' }
     }
 
     revalidatePath('/', 'layout')
@@ -28,3 +33,4 @@ export async function logout() {
     await supabase.auth.signOut()
     redirect('/login')
 }
+

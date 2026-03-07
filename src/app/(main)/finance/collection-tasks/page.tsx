@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,6 +7,7 @@ import {
     AlertTriangle, Clock, Zap, RefreshCw, X, ChevronDown, User,
     BadgeAlert, Wallet, TrendingDown, StickyNote
 } from 'lucide-react';
+import { MaskedContact } from '@/components/ui/MaskedContact';
 
 // ────────────────────────────────────────────────────────────── types
 type CollectionTask = {
@@ -37,6 +38,8 @@ type CollectionTask = {
         payment_due_date: string;
         amount_payable_period: number;
         amount_paid_period: number | null;
+        negotiated_payable_amount: number | null;
+        amount_adjust_reason: string | null;
         billing_fee_month: number | null;
         receipt_note: string | null;
     } | null;
@@ -109,6 +112,11 @@ export default function CollectionTasksPage() {
     const [followupInput, setFollowupInput] = useState('');
     const [savingNote, setSavingNote] = useState(false);
     const [showFollowupPicker, setShowFollowupPicker] = useState<string | null>(null); // task id
+
+    // Negotiation state
+    const [negotiatedAmount, setNegotiatedAmount] = useState<string>('');
+    const [adjustReason, setAdjustReason] = useState<string>('');
+    const [savingNegotiation, setSavingNegotiation] = useState(false);
 
     // ── Stats
     const fetchStats = useCallback(async () => {
@@ -201,6 +209,47 @@ export default function CollectionTasksPage() {
         setSelectedTask(prev => prev ? { ...prev, note: noteInput } : null);
     };
 
+    const handleNegotiate = async () => {
+        if (!selectedTask || !negotiatedAmount || !adjustReason) return;
+        setSavingNegotiation(true);
+        try {
+            const res = await fetch(`/api/finance/collection-tasks/${selectedTask.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    negotiated_payable_amount: parseFloat(negotiatedAmount),
+                    amount_adjust_reason: adjustReason
+                }),
+            });
+            if (!res.ok) {
+                const json = await res.json();
+                throw new Error(json.error || '调整失败');
+            }
+            fetchTasks();
+            fetchStats();
+            // Update local selected task to reflect changes immediately
+            setSelectedTask(prev => {
+                if (!prev) return null;
+                const newPayable = parseFloat(negotiatedAmount);
+                const paid = prev.company_receivables?.amount_paid_period || 0;
+                return {
+                    ...prev,
+                    uncollected_amount: Math.max(0, newPayable - paid),
+                    company_receivables: prev.company_receivables ? {
+                        ...prev.company_receivables,
+                        negotiated_payable_amount: newPayable,
+                        amount_adjust_reason: adjustReason
+                    } : null
+                };
+            });
+            alert('调价成功');
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSavingNegotiation(false);
+        }
+    };
+
     // ── Generate
     const handleGenerate = async () => {
         setGenerating(true);
@@ -224,6 +273,8 @@ export default function CollectionTasksPage() {
         setSelectedTask(task);
         setNoteInput(task.note ?? '');
         setFollowupInput(task.next_followup_at ?? '');
+        setNegotiatedAmount(task.company_receivables?.negotiated_payable_amount?.toString() ?? task.company_receivables?.amount_payable_period?.toString() ?? '');
+        setAdjustReason(task.company_receivables?.amount_adjust_reason ?? '');
     };
 
     // ────────────────────────────────────────────── render
@@ -658,7 +709,7 @@ export default function CollectionTasksPage() {
                                         { label: '上次联系', value: formatDate(selectedTask.last_contact_at) },
                                         { label: '负责人', value: selectedTask.owner ?? '-' },
                                         { label: '联系人', value: selectedTask.customers?.contact_person ?? '-' },
-                                        { label: '联系方式', value: selectedTask.customers?.contact_info ?? '-' },
+                                        { label: '联系方式', value: selectedTask.customers?.contact_info ? <MaskedContact contact={selectedTask.customers.contact_info} /> : '-' },
                                     ].map(({ label, value }) => (
                                         <div key={label} className="px-4 py-2.5 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
                                             <dt className="text-sm font-medium text-slate-500">{label}</dt>
@@ -706,6 +757,48 @@ export default function CollectionTasksPage() {
                                     {savingNote ? '保存中...' : '保存备注'}
                                 </button>
                             </div>
+
+                            {/* Price Negotiation Section */}
+                            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                                <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                                    <TrendingDown className="w-4 h-4 text-emerald-500" /> 协商调价 (Negotiate Price)
+                                </p>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">协商后的应付金额 (Negotiated Amount)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2 text-slate-400 text-sm">¥</span>
+                                            <input
+                                                type="number"
+                                                value={negotiatedAmount}
+                                                onChange={e => setNegotiatedAmount(e.target.value)}
+                                                placeholder="输入协商后的最终金额"
+                                                className="w-full text-sm border border-slate-200 rounded-lg pl-7 pr-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">价格调整理由 (Reason - Required)</label>
+                                        <input
+                                            type="text"
+                                            value={adjustReason}
+                                            onChange={e => setAdjustReason(e.target.value)}
+                                            placeholder="例如：大客户优惠、逾期协商减免..."
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={handleNegotiate}
+                                        disabled={savingNegotiation || !negotiatedAmount || !adjustReason || (
+                                            parseFloat(negotiatedAmount) === selectedTask.company_receivables?.negotiated_payable_amount &&
+                                            adjustReason === selectedTask.company_receivables?.amount_adjust_reason
+                                        )}
+                                        className="w-full text-sm bg-emerald-600 text-white rounded-lg py-2 shadow-sm hover:bg-emerald-700 disabled:opacity-40 transition-colors font-medium"
+                                    >
+                                        {savingNegotiation ? '保存中...' : '提交调价申请'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Panel footer actions */}
@@ -739,3 +832,5 @@ export default function CollectionTasksPage() {
         </div>
     );
 }
+
+

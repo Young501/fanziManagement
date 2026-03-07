@@ -75,6 +75,37 @@ export default function FinanceCustomersPage() {
 
     const [selectedItem, setSelectedItem] = useState<Receivable | null>(null);
 
+    // Edit functionality states
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData] = useState<Partial<Receivable>>({});
+    const [saveLoading, setSaveLoading] = useState(false);
+
+    const handleSaveEdit = async () => {
+        if (!selectedItem || !editData) return;
+        setSaveLoading(true);
+        try {
+            const res = await fetch(`/api/finance/customers/${selectedItem.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editData),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || '保存失败');
+            }
+
+            // Refresh list and update selected item locally (or close modal)
+            setIsEditing(false);
+            setSelectedItem({ ...selectedItem, ...editData } as Receivable);
+            fetchReceivables();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSaveLoading(false);
+        }
+    };
+
+
     // Fetch stats
     useEffect(() => {
         setStatsLoading(true);
@@ -392,7 +423,7 @@ export default function FinanceCustomersPage() {
                                     <tr
                                         key={item.id}
                                         className="hover:bg-blue-50/40 transition-colors duration-200 cursor-pointer group"
-                                        onClick={() => setSelectedItem(item)}
+                                        onClick={() => { setSelectedItem(item); setIsEditing(false); setEditData(item); }}
                                     >
                                         <td className="py-4 pl-6 pr-3">
                                             <div className="flex items-center gap-3">
@@ -515,7 +546,16 @@ export default function FinanceCustomersPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                                     <p className="text-xs font-medium text-slate-500 mb-1">应付总额</p>
-                                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedItem.amount_payable_period)}</p>
+                                    {isEditing ? (
+                                        <input
+                                            type="number"
+                                            className="w-full mt-1 p-1 border border-slate-200 rounded text-xl font-bold text-slate-900"
+                                            value={editData.amount_payable_period || ''}
+                                            onChange={(e) => setEditData({ ...editData, amount_payable_period: Number(e.target.value) })}
+                                        />
+                                    ) : (
+                                        <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedItem.amount_payable_period)}</p>
+                                    )}
                                 </div>
                                 <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                                     <p className="text-xs font-medium text-slate-500 mb-1">已付款金额</p>
@@ -525,34 +565,90 @@ export default function FinanceCustomersPage() {
 
                             {/* Details List */}
                             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-200">
+                                <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-200 flex justify-between items-center">
                                     <h3 className="text-sm font-semibold text-slate-800">业务 & 收费详情</h3>
+                                    {!isEditing ? (
+                                        <button
+                                            onClick={() => setIsEditing(true)}
+                                            className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded text-xs font-medium transition"
+                                        >
+                                            编辑
+                                        </button>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setIsEditing(false)}
+                                                className="px-2 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded text-xs font-medium transition"
+                                            >
+                                                取消
+                                            </button>
+                                            <button
+                                                onClick={handleSaveEdit}
+                                                disabled={saveLoading}
+                                                className="px-2 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded text-xs font-medium transition disabled:opacity-50"
+                                            >
+                                                {saveLoading ? '保存中...' : '保存'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="p-0">
                                     <dl className="divide-y divide-slate-100">
                                         <div className="px-4 py-3 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
                                             <dt className="text-sm font-medium text-slate-500">每月服务费</dt>
-                                            <dd className="text-sm font-medium text-slate-900 col-span-2">{formatCurrency(selectedItem.billing_fee_month)}</dd>
+                                            <dd className="text-sm font-medium text-slate-900 col-span-2">
+                                                {isEditing ? (
+                                                    <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={editData.billing_fee_month || ''} onChange={e => setEditData({ ...editData, billing_fee_month: Number(e.target.value) })} />
+                                                ) : formatCurrency(selectedItem.billing_fee_month)}
+                                            </dd>
                                         </div>
                                         <div className="px-4 py-3 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
                                             <dt className="text-sm font-medium text-slate-500">收费周期(月)</dt>
-                                            <dd className="text-sm text-slate-900 col-span-2">{selectedItem.pay_cycle_months || '-'}</dd>
+                                            <dd className="text-sm text-slate-900 col-span-2">
+                                                {isEditing ? (
+                                                    <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={editData.pay_cycle_months || ''} onChange={e => setEditData({ ...editData, pay_cycle_months: Number(e.target.value) })} />
+                                                ) : (selectedItem.pay_cycle_months || '-')}
+                                            </dd>
                                         </div>
                                         <div className="px-4 py-3 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
                                             <dt className="text-sm font-medium text-slate-500">标准价格</dt>
-                                            <dd className="text-sm text-slate-900 col-span-2">{formatCurrency(selectedItem.standard_price)}</dd>
+                                            <dd className="text-sm text-slate-900 col-span-2">
+                                                {isEditing ? (
+                                                    <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={editData.standard_price || ''} onChange={e => setEditData({ ...editData, standard_price: Number(e.target.value) })} />
+                                                ) : formatCurrency(selectedItem.standard_price)}
+                                            </dd>
                                         </div>
                                         <div className="px-4 py-3 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
                                             <dt className="text-sm font-medium text-slate-500">折扣差额</dt>
-                                            <dd className="text-sm text-slate-900 col-span-2">{formatCurrency(selectedItem.discount_gap)}</dd>
+                                            <dd className="text-sm text-slate-900 col-span-2">
+                                                {isEditing ? (
+                                                    <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={editData.discount_gap || ''} onChange={e => setEditData({ ...editData, discount_gap: Number(e.target.value) })} />
+                                                ) : formatCurrency(selectedItem.discount_gap)}
+                                            </dd>
                                         </div>
                                         <div className="px-4 py-3 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
                                             <dt className="text-sm font-medium text-slate-500">是否有合同</dt>
-                                            <dd className="text-sm text-slate-900 col-span-2">{selectedItem.has_contract ? '是' : '否'}</dd>
+                                            <dd className="text-sm text-slate-900 col-span-2 flex items-center">
+                                                {isEditing ? (
+                                                    <input type="checkbox" checked={editData.has_contract || false} onChange={e => setEditData({ ...editData, has_contract: e.target.checked })} className="w-4 h-4 text-blue-600 rounded" />
+                                                ) : (selectedItem.has_contract ? '是' : '否')}
+                                            </dd>
+                                        </div>
+                                        <div className="px-4 py-3 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
+                                            <dt className="text-sm font-medium text-slate-500">应付日期 (到期日)</dt>
+                                            <dd className="text-sm text-slate-900 col-span-2">
+                                                {isEditing ? (
+                                                    <input type="date" className="w-full border rounded px-2 py-1 text-sm" value={editData.payment_due_date ? editData.payment_due_date.split('T')[0] : ''} onChange={e => setEditData({ ...editData, payment_due_date: e.target.value })} />
+                                                ) : formatDate(selectedItem.payment_due_date)}
+                                            </dd>
                                         </div>
                                         <div className="px-4 py-3 grid grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
                                             <dt className="text-sm font-medium text-slate-500">合同到期日</dt>
-                                            <dd className="text-sm text-slate-900 col-span-2">{formatDate(selectedItem.contract_end_date)}</dd>
+                                            <dd className="text-sm text-slate-900 col-span-2">
+                                                {isEditing ? (
+                                                    <input type="date" className="w-full border rounded px-2 py-1 text-sm" value={editData.contract_end_date ? editData.contract_end_date.split('T')[0] : ''} onChange={e => setEditData({ ...editData, contract_end_date: e.target.value })} />
+                                                ) : formatDate(selectedItem.contract_end_date)}
+                                            </dd>
                                         </div>
                                     </dl>
                                 </div>
@@ -560,7 +656,7 @@ export default function FinanceCustomersPage() {
 
                             {/* Additional Information */}
                             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-200">
+                                <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-200 flex justify-between items-center">
                                     <h3 className="text-sm font-semibold text-slate-800">最新收款 & 备注</h3>
                                 </div>
                                 <div className="p-4 space-y-4">
@@ -580,12 +676,16 @@ export default function FinanceCustomersPage() {
                                             <p className="text-sm text-slate-700 bg-slate-50 p-2.5 rounded-lg mt-1 border border-slate-100">{selectedItem.receipt_note}</p>
                                         </div>
                                     )}
-                                    {selectedItem.note && (
-                                        <div>
-                                            <p className="text-xs font-medium text-slate-500">特殊说明</p>
-                                            <p className="text-sm text-slate-700 bg-amber-50/50 p-2.5 rounded-lg mt-1 border border-amber-100/50">{selectedItem.note}</p>
-                                        </div>
-                                    )}
+
+                                    <div>
+                                        <p className="text-xs font-medium text-slate-500">特殊说明</p>
+                                        {isEditing ? (
+                                            <textarea className="w-full border rounded px-2 py-1 text-sm mt-1 bg-amber-50/50 border-amber-100/50 min-h-[60px]" value={editData.note || ''} onChange={e => setEditData({ ...editData, note: e.target.value })} />
+                                        ) : (
+                                            selectedItem.note && <p className="text-sm text-slate-700 bg-amber-50/50 p-2.5 rounded-lg mt-1 border border-amber-100/50">{selectedItem.note}</p>
+                                        )}
+                                    </div>
+
                                 </div>
                             </div>
 

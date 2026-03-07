@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -8,7 +8,13 @@ function createAdminClient() {
     );
 }
 
-// Priority computation helper
+function noStoreJson(body: unknown, status = 200) {
+    return NextResponse.json(body, {
+        status,
+        headers: { 'Cache-Control': 'no-store' },
+    });
+}
+
 function computePriority(overdayDays: number, uncollected: number, daysUntilDue: number | null): string {
     if (overdayDays > 30 || uncollected >= 5000) return 'P0';
     if (overdayDays >= 7 || (uncollected >= 1000 && uncollected < 5000)) return 'P1';
@@ -31,7 +37,6 @@ export async function POST() {
         const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         const monthEnd = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
-        // 1. Fetch all unpaid receivables (overdue OR due this month)
         const { data: receivables, error: recError } = await supabase
             .from('company_receivables')
             .select(`
@@ -44,10 +49,9 @@ export async function POST() {
             .or(`payment_due_date.lt.${todayStr},and(payment_due_date.gte.${monthStart},payment_due_date.lte.${monthEnd})`);
 
         if (recError) {
-            return NextResponse.json({ error: recError.message }, { status: 500 });
+            return noStoreJson({ error: recError.message }, 500);
         }
 
-        // Filter to only unpaid
         const unpaidReceivables = (receivables || []).filter((r: any) => {
             const paid = Number(r.amount_paid_period || 0);
             const payable = Number(r.amount_payable_period || 0);
@@ -55,10 +59,9 @@ export async function POST() {
         });
 
         if (unpaidReceivables.length === 0) {
-            return NextResponse.json({ created: 0, message: '没有需要生成的催款任务' });
+            return noStoreJson({ created: 0, message: 'No receivables require new tasks' });
         }
 
-        // 2. Get existing open tasks for these receivables (prevent duplicates)
         const receivableIds = unpaidReceivables.map((r: any) => r.id);
         const { data: existingTasks } = await supabase
             .from('collection_tasks')
@@ -68,10 +71,9 @@ export async function POST() {
 
         const existingReceivableIds = new Set((existingTasks || []).map((t: any) => t.receivable_id));
 
-        // 3. Build new tasks to insert
         const toInsert = [];
         for (const rec of unpaidReceivables) {
-            if (existingReceivableIds.has(rec.id)) continue; // already has open task
+            if (existingReceivableIds.has(rec.id)) continue;
 
             const paid = Number(rec.amount_paid_period || 0);
             const payable = Number(rec.amount_payable_period || 0);
@@ -98,7 +100,7 @@ export async function POST() {
         }
 
         if (toInsert.length === 0) {
-            return NextResponse.json({ created: 0, message: '所有应收账款已有未完成的催款任务' });
+            return noStoreJson({ created: 0, message: 'All unpaid receivables already have open tasks' });
         }
 
         const { error: insertError } = await supabase
@@ -107,12 +109,12 @@ export async function POST() {
 
         if (insertError) {
             console.error('[collection-tasks/generate] insert error:', insertError);
-            return NextResponse.json({ error: insertError.message }, { status: 500 });
+            return noStoreJson({ error: insertError.message }, 500);
         }
 
-        return NextResponse.json({ created: toInsert.length, message: `成功生成 ${toInsert.length} 条催款任务` });
+        return noStoreJson({ created: toInsert.length, message: `Generated ${toInsert.length} tasks` });
     } catch (err: any) {
         console.error('[collection-tasks/generate] unexpected error:', err);
-        return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 });
+        return noStoreJson({ error: err?.message ?? 'Internal server error' }, 500);
     }
 }

@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Search, FileText, UserMinus, Filter, X, ChevronLeft, ChevronRight, Users, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Plus, Search, FileText, UserMinus, Filter, X, ChevronLeft, ChevronRight, Users, TrendingUp, TrendingDown, Minus, Building2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from 'next/link';
+import { MaskedContact } from '@/components/ui/MaskedContact';
 
 // City prefixes to skip when picking avatar character
 const CITY_PREFIXES = ['上海', '广州', '深圳', '北京', '杭州', '南京', '苏州', '成都', '武汉', '天津'];
@@ -70,8 +73,59 @@ export default function CustomersPage() {
     const [filterOpen, setFilterOpen] = useState(false);
     const filterRef = useRef<HTMLDivElement>(null);
 
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+    const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+    const [detailData, setDetailData] = useState<any>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState<string | null>(null);
+
+    // Edit functionality states
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData] = useState<Partial<Customer>>({});
+    const [saveLoading, setSaveLoading] = useState(false);
+
+    const openCustomerDetails = useCallback((id: string) => {
+        setSelectedCustomerId(id);
+        setIsDetailModalOpen(true);
+        setDetailLoading(true);
+        setDetailError(null);
+        setIsEditing(false); // Reset edit state when opening a new customer
+        fetch(`/api/customers/${id}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.error) throw new Error(res.error);
+                setDetailData(res);
+                setEditData(res.customer); // Pre-fill edit form
+            })
+            .catch(err => setDetailError(err.message))
+            .finally(() => setDetailLoading(false));
+    }, []);
+
+    const handleSaveEdit = async () => {
+        if (!selectedCustomerId || !editData) return;
+        setSaveLoading(true);
+        try {
+            const res = await fetch(`/api/customers/${selectedCustomerId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editData),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || '保存失败');
+            }
+
+            // Refresh detail data and list
+            setIsEditing(false);
+            openCustomerDetails(selectedCustomerId);
+            fetchCustomers();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSaveLoading(false);
+        }
+    };
+
 
     // Debounced search: update `search` state 350ms after user stops typing
     const handleSearchChange = (value: string) => {
@@ -238,14 +292,6 @@ export default function CustomersPage() {
                             </div>
                         )}
                     </div>
-
-                    <button
-                        onClick={() => setIsAddModalOpen(true)}
-                        className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-all"
-                    >
-                        <Plus className="w-4 h-4 mr-2" />
-                        新增客户
-                    </button>
                 </div>
             </div>
 
@@ -280,7 +326,7 @@ export default function CustomersPage() {
                                 <>
                                     <h3 className="text-2xl font-bold text-slate-900">{stats?.thisMonthCount || 0}</h3>
                                     <span className={`text-sm font-medium ml-2 flex items-center px-2 py-0.5 rounded-full ${(stats?.monthlyChange || 0) > 0 ? 'bg-emerald-50 text-emerald-700' :
-                                            (stats?.monthlyChange || 0) < 0 ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'
+                                        (stats?.monthlyChange || 0) < 0 ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'
                                         }`}>
                                         {(stats?.monthlyChange || 0) > 0 ? <TrendingUp className="w-3.5 h-3.5 mr-1" /> :
                                             (stats?.monthlyChange || 0) < 0 ? <TrendingDown className="w-3.5 h-3.5 mr-1" /> : <Minus className="w-3.5 h-3.5 mr-1" />}
@@ -403,8 +449,8 @@ export default function CustomersPage() {
                                         <div className="text-sm font-medium text-slate-800 truncate" title={customer.contact_person || ''}>
                                             {customer.contact_person || '-'}
                                         </div>
-                                        <div className="text-xs text-slate-400 truncate mt-0.5" title={customer.contact_info}>
-                                            {customer.contact_info || ''}
+                                        <div className="text-xs text-slate-400 mt-0.5 flex">
+                                            <MaskedContact contact={customer.contact_info || ''} className="truncate" />
                                         </div>
                                     </td>
                                     <td className="px-4 py-4 text-left">
@@ -422,17 +468,11 @@ export default function CustomersPage() {
                                     <td className="py-4 pl-4 pr-6 text-center">
                                         <div className="flex items-center justify-center gap-1">
                                             <button
-                                                onClick={() => setSelectedCustomer(customer)}
+                                                onClick={() => openCustomerDetails(customer.id)}
                                                 className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition-all border border-transparent hover:border-blue-100"
                                             >
                                                 <FileText className="w-3.5 h-3.5" />
                                                 详情
-                                            </button>
-                                            <button
-                                                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-all border border-transparent hover:border-red-100"
-                                            >
-                                                <UserMinus className="w-3.5 h-3.5" />
-                                                流失
                                             </button>
                                         </div>
                                     </td>
@@ -492,98 +532,283 @@ export default function CustomersPage() {
                 </div>
             </div>
 
-            {/* Modal: Add Customer */}
-            {isAddModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
-                    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="px-6 py-4 border-b border-slate-100">
-                            <h2 className="text-xl font-semibold text-slate-900">新增客户</h2>
-                            <p className="text-sm text-slate-500 mt-1">请填写核心信息，其他资料可在详情页补充。</p>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">公司名称 <span className="text-red-500">*</span></label>
-                                <input type="text" className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors" placeholder="如：科技创新网络有限公司" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">联系人 <span className="text-red-500">*</span></label>
-                                <input type="text" className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors" placeholder="如：张经理" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">客户状态</label>
-                                    <select className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white transition-colors">
-                                        <option value="normal">正常</option>
-                                        <option value="arrears">拖欠户</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">财务</label>
-                                    <select className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white transition-colors">
-                                        <option value="">请选择</option>
-                                        {serviceManagers.map((m) => <option key={m} value={m}>{m}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                            <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-xl transition-colors">取消</button>
-                            <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition-colors">保存并创建</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Slide-over: Customer Details */}
-            {selectedCustomer && (
-                <div className="fixed inset-0 z-50 flex items-center justify-end p-0 sm:p-4">
-                    <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-sm" onClick={() => setSelectedCustomer(null)} />
-                    <div className="relative bg-white w-full sm:w-[480px] h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-                        <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-start">
-                            <div className="pr-8">
-                                <h2 className="text-xl font-bold text-slate-900 leading-tight">{selectedCustomer.company_name}</h2>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-3 ${getStatusStyle(selectedCustomer.customer_status)}`}>
-                                    {getStatusText(selectedCustomer.customer_status)}
-                                </span>
+            {isDetailModalOpen && (
+                <div className="fixed inset-0 z-50 overflow-hidden" aria-labelledby="slide-over-title" role="dialog" aria-modal="true">
+                    <div className="absolute inset-0 overflow-hidden">
+                        <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm transition-opacity" onClick={() => setIsDetailModalOpen(false)} />
+                        <div className="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10 sm:pl-16">
+                            <div className="pointer-events-auto w-screen max-w-2xl transform transition-all duration-500 ease-in-out">
+                                <div className="flex h-full flex-col bg-slate-50 shadow-2xl">
+                                    <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0 sticky top-0 z-10">
+                                        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2" id="slide-over-title">
+                                            <Building2 className="w-5 h-5 text-blue-600" />
+                                            客户档案详情
+                                        </h2>
+                                        <button
+                                            type="button"
+                                            className="rounded-full p-2 text-slate-400 hover:text-slate-500 hover:bg-slate-100 focus:outline-none transition-colors"
+                                            onClick={() => setIsDetailModalOpen(false)}
+                                        >
+                                            <span className="sr-only">Close panel</span>
+                                            <X className="h-5 w-5" />
+                                        </button>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto">
+                                        {detailLoading ? (
+                                            <div className="p-10 flex justify-center text-slate-500">加载中...</div>
+                                        ) : detailError ? (
+                                            <div className="p-10 text-center text-red-500">{detailError}</div>
+                                        ) : detailData?.customer ? (
+                                            <div className="p-6">
+                                                <div className="mb-6">
+                                                    <h3 className="text-xl font-bold text-slate-900">{detailData.customer.company_name}</h3>
+                                                    <div className="mt-2 text-sm text-slate-500 flex gap-4">
+                                                        <span>联系人: {detailData.customer.contact_person}</span>
+                                                        <span className="flex items-center">
+                                                            电话: <span className="ml-1"><MaskedContact contact={detailData.customer.contact_info} /></span>
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <Tabs defaultValue="basic" className="w-full">
+                                                    <TabsList className="mb-6">
+                                                        <TabsTrigger value="basic" className="flex gap-2">
+                                                            <FileText className="w-4 h-4" />
+                                                            基础档案
+                                                        </TabsTrigger>
+                                                        <TabsTrigger value="company" className="flex gap-2">
+                                                            <Building2 className="w-4 h-4" />
+                                                            公司画像
+                                                        </TabsTrigger>
+                                                        <TabsTrigger value="shareholders" className="flex gap-2">
+                                                            <Users className="w-4 h-4" />
+                                                            股东信息
+                                                        </TabsTrigger>
+                                                    </TabsList>
+
+                                                    <TabsContent value="basic" className="focus:outline-none focus:ring-0">
+                                                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                                                <h2 className="text-lg font-semibold text-slate-800">基础业务档案</h2>
+                                                                {!isEditing ? (
+                                                                    <button
+                                                                        onClick={() => setIsEditing(true)}
+                                                                        className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition"
+                                                                    >
+                                                                        编辑
+                                                                    </button>
+                                                                ) : (
+                                                                    <div className="flex gap-2">
+                                                                        <button
+                                                                            onClick={() => { setIsEditing(false); setEditData(detailData.customer); }}
+                                                                            className="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition"
+                                                                        >
+                                                                            取消
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={handleSaveEdit}
+                                                                            disabled={saveLoading}
+                                                                            className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium transition disabled:opacity-50"
+                                                                        >
+                                                                            {saveLoading ? '保存中...' : '保存'}
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">企业名称</label>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.company_name || ''}
+                                                                            onChange={e => setEditData({ ...editData, company_name: e.target.value })}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.company_name}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">联系人</label>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.contact_person || ''}
+                                                                            onChange={e => setEditData({ ...editData, contact_person: e.target.value })}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.contact_person}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">联系方式</label>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.contact_info || ''}
+                                                                            onChange={e => setEditData({ ...editData, contact_info: e.target.value })}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-slate-800"><MaskedContact contact={detailData.customer.contact_info} /></div>
+                                                                    )}
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">企微好友</label>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.website_member || ''}
+                                                                            onChange={e => setEditData({ ...editData, website_member: e.target.value })}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.website_member_name || detailData.customer.website_member || '未添加'}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="md:col-span-2">
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">通信地址</label>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.address || ''}
+                                                                            onChange={e => setEditData({ ...editData, address: e.target.value })}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.address || '暂无'}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">客户状态</label>
+                                                                    {isEditing ? (
+                                                                        <select
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.customer_status || ''}
+                                                                            onChange={e => setEditData({ ...editData, customer_status: e.target.value })}
+                                                                        >
+                                                                            <option value="正常">正常</option>
+                                                                            <option value="拖欠户">拖欠户</option>
+                                                                            <option value="风险户">风险户</option>
+                                                                            <option value="流失">流失</option>
+                                                                        </select>
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.customer_status}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">客户来源</label>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.source_info || ''}
+                                                                            onChange={e => setEditData({ ...editData, source_info: e.target.value })}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.source_info}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">客服经理</label>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                            value={editData.service_manager || ''}
+                                                                            onChange={e => setEditData({ ...editData, service_manager: e.target.value })}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.service_manager}</div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </TabsContent>
+
+                                                    <TabsContent value="company" className="focus:outline-none focus:ring-0">
+                                                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                                                <h2 className="text-lg font-semibold text-slate-800">公司画像</h2>
+                                                            </div>
+                                                            {detailData.companyProfile ? (
+                                                                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">统一社会信用代码</label>
+                                                                        <div className="text-slate-800">{detailData.companyProfile.credit_code || '未填写'}</div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">法定代表人</label>
+                                                                        <div className="text-slate-800">{detailData.companyProfile.legal_representative || '未填写'}</div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">注册资本</label>
+                                                                        <div className="text-slate-800">{detailData.companyProfile.registered_capital ? `${detailData.companyProfile.registered_capital}万元` : '未填写'}</div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">成立日期</label>
+                                                                        <div className="text-slate-800">{detailData.companyProfile.establishment_date || '未填写'}</div>
+                                                                    </div>
+                                                                    <div className="md:col-span-2">
+                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">经营范围</label>
+                                                                        <div className="text-slate-800 text-sm whitespace-pre-wrap">{detailData.companyProfile.business_scope || '未填写'}</div>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="p-10 text-center text-slate-500 flex flex-col items-center">
+                                                                    <Building2 className="w-12 h-12 mb-4 text-slate-300" />
+                                                                    <h3 className="text-lg font-medium text-slate-800 mb-2">暂无公司画像</h3>
+                                                                    <p className="mb-4">该客户尚未建立公司画像，如工商、税务等详细信息。</p>
+                                                                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">建立公司画像</button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TabsContent>
+
+                                                    <TabsContent value="shareholders" className="focus:outline-none focus:ring-0">
+                                                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                                                <h2 className="text-lg font-semibold text-slate-800">股东与高管</h2>
+                                                                <button className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition">添加股东</button>
+                                                            </div>
+                                                            {detailData.shareholders?.length > 0 ? (
+                                                                <div className="divide-y divide-slate-100">
+                                                                    {detailData.shareholders.map((sh: any) => (
+                                                                        <div key={sh.id} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4 hover:bg-slate-50/50 transition-colors">
+                                                                            <div>
+                                                                                <div className="text-sm font-medium text-slate-500 mb-1">股东姓名</div>
+                                                                                <div className="font-semibold text-slate-800">{sh.name}</div>
+                                                                            </div>
+                                                                            <div>
+                                                                                <div className="text-sm font-medium text-slate-500 mb-1">持股比例</div>
+                                                                                <div className="text-slate-800">{sh.share_ratio}%</div>
+                                                                            </div>
+                                                                            <div>
+                                                                                <div className="text-sm font-medium text-slate-500 mb-1">联系电话</div>
+                                                                                <div className="text-slate-800"><MaskedContact contact={sh.contact_number || ''} /></div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="p-10 text-center text-slate-500 flex flex-col items-center">
+                                                                    <Users className="w-12 h-12 mb-4 text-slate-300" />
+                                                                    <h3 className="text-lg font-medium text-slate-800 mb-2">暂无股东信息</h3>
+                                                                    <p className="mb-4">您还没有登记任何股东或高管成员信息。</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TabsContent>
+                                                </Tabs>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
                             </div>
-                            <button onClick={() => setSelectedCustomer(null)} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full p-2 transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-6">
-                            <dl className="grid grid-cols-2 gap-x-4 gap-y-6">
-                                <div>
-                                    <dt className="text-xs font-medium text-slate-400 uppercase tracking-wider">联系人</dt>
-                                    <dd className="mt-1 text-sm text-slate-900">{selectedCustomer.contact_person || '-'}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-xs font-medium text-slate-400 uppercase tracking-wider">财务</dt>
-                                    <dd className="mt-1 text-sm text-slate-900">{selectedCustomer.service_manager || '-'}</dd>
-                                </div>
-                                <div className="col-span-2">
-                                    <dt className="text-xs font-medium text-slate-400 uppercase tracking-wider">联系信息</dt>
-                                    <dd className="mt-1 text-sm text-slate-900 break-words">{selectedCustomer.contact_info || '-'}</dd>
-                                </div>
-                                <div className="col-span-2">
-                                    <dt className="text-xs font-medium text-slate-400 uppercase tracking-wider">公司地址</dt>
-                                    <dd className="mt-1 text-sm text-slate-900">{selectedCustomer.address || '未填写'}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-xs font-medium text-slate-400 uppercase tracking-wider">官网账号</dt>
-                                    <dd className="mt-1 text-sm text-slate-900">{selectedCustomer.website_member || '-'}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-xs font-medium text-slate-400 uppercase tracking-wider">客户来源</dt>
-                                    <dd className="mt-1 text-sm text-slate-900">{selectedCustomer.source_info || '-'}</dd>
-                                </div>
-                                <div className="col-span-2">
-                                    <dt className="text-xs font-medium text-slate-400 uppercase tracking-wider">创建时间</dt>
-                                    <dd className="mt-1 text-sm text-slate-900">
-                                        {selectedCustomer.created_at ? new Date(selectedCustomer.created_at).toLocaleString('zh-CN') : '-'}
-                                    </dd>
-                                </div>
-                            </dl>
                         </div>
                     </div>
                 </div>

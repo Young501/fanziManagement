@@ -42,15 +42,25 @@ export default async function Home() {
     .from('customers')
     .select('*', { count: 'exact', head: true });
 
-  // 2. Get current month's customers (Hardcoded to 0 as per request since they were directly imported)
-  const thisMonthNewCustomers = 0;
-
   const now = new Date();
-
-  // 3. Collection tasks analysis
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const monthEnd = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+
+  // 2. Get current month's new customers count
+  const { count: thisMonthNewCustomers } = await supabase
+    .from('customers')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', monthStart);
+
+  // Get most recent 5 customers for the widget list
+  const { data: recentNewCustomers } = await supabase
+    .from('customers')
+    .select('id, company_name, created_at, contact_person')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  // 3. Collection tasks analysis
 
   const { data: allTasks } = await supabase
     .from('collection_tasks')
@@ -99,6 +109,20 @@ export default async function Home() {
         )
     `)
     .order('paid_at', { ascending: false })
+    .limit(5);
+
+  // 5. Churned Customers
+  const { data: churnedCustomers } = await supabase
+    .from('customer_churn_logs')
+    .select(`
+        id,
+        churn_date,
+        churn_reason,
+        customers (
+            company_name
+        )
+    `)
+    .order('churn_date', { ascending: false })
     .limit(5);
 
   const stats = [
@@ -153,38 +177,101 @@ export default async function Home() {
 
       {/* Main content grid area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="col-span-1 lg:col-span-2 p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-slate-900">近期回款趋势</h2>
-            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
-              查看全部
-            </button>
+
+        {/* left column: Recent payments & Churned */}
+        <div className="col-span-1 lg:col-span-2 space-y-6">
+
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-slate-900">近期新增客户</h2>
+              <button className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                查看全部
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 rounded-tl-lg">客户名称</th>
+                    <th className="px-4 py-3">联系人</th>
+                    <th className="px-4 py-3 rounded-tr-lg text-right">建档时间</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {recentNewCustomers && recentNewCustomers.length > 0 ? (
+                    recentNewCustomers.map((c: any) => (
+                      <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-800">{c.company_name}</td>
+                        <td className="px-4 py-3 text-slate-600">{c.contact_person || '-'}</td>
+                        <td className="px-4 py-3 text-slate-500 text-right">{formatDate(c.created_at).split(' ')[0]}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                        暂无新增客户
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="h-64 flex items-center justify-center border border-dashed border-slate-300 rounded-xl bg-slate-50">
-            <p className="text-slate-400 text-sm">图表占位区：待接驳</p>
+
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                近期流失记录摘要
+              </h2>
+            </div>
+            <div className="space-y-3">
+              {churnedCustomers && churnedCustomers.length > 0 ? (
+                churnedCustomers.map((churn: any) => (
+                  <div key={churn.id} className="flex items-start justify-between p-4 rounded-xl border border-red-100 bg-red-50/30">
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-1">{churn.customers?.company_name || '未知客户'}</h4>
+                      <p className="text-xs text-slate-500">
+                        <span className="font-medium text-red-600">流失原因:</span> {churn.churn_reason}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-semibold text-slate-500">{churn.churn_date}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
+                  <p className="text-sm font-medium text-slate-500">近期无客户流失，继续保持！</p>
+                </div>
+              )}
+            </div>
           </div>
+
         </div>
 
-        <div className="col-span-1 p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900 mb-6">最近收款活动</h2>
-          <div className="space-y-4">
-            {recentPayments && recentPayments.length > 0 ? (
-              recentPayments.map((item: any, idx: number) => (
-                <div key={item.id || idx} className="flex items-start gap-3 relative pb-4 before:absolute before:inset-y-0 before:left-[11px] before:w-px before:bg-slate-200 last:before:hidden last:pb-0">
-                  <div className="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-200 relative z-10">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+        {/* Right column: Timeline / Activities */}
+        <div className="col-span-1 space-y-6">
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900 mb-6">最近收款活动</h2>
+            <div className="space-y-4">
+              {recentPayments && recentPayments.length > 0 ? (
+                recentPayments.map((item: any, idx: number) => (
+                  <div key={item.id || idx} className="flex items-start gap-3 relative pb-4 before:absolute before:inset-y-0 before:left-[11px] before:w-px before:bg-slate-200 last:before:hidden last:pb-0">
+                    <div className="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-200 relative z-10">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-800">
+                        收到 <strong>{item.customers?.company_name || '客户'}</strong> 的付款 <span className="text-emerald-600 font-semibold">¥{item.paid_amount.toLocaleString()}</span>
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">{formatDate(item.paid_at)}</p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-slate-800">
-                      收到 <strong>{item.customers?.company_name || '客户'}</strong> 的付款 <span className="text-emerald-600 font-semibold">¥{item.paid_amount}</span>
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">{formatDate(item.paid_at)}</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-slate-500">暂无收款活动</p>
-            )}
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">暂无收款活动</p>
+              )}
+            </div>
           </div>
         </div>
       </div>

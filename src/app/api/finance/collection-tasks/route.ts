@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -8,20 +8,31 @@ function createAdminClient() {
     );
 }
 
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+
+function toPositiveInt(value: string | null, fallback: number) {
+    const n = Number.parseInt(value ?? '', 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function noStoreJson(body: unknown, status = 200) {
+    return NextResponse.json(body, {
+        status,
+        headers: { 'Cache-Control': 'no-store' },
+    });
+}
+
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
-        const tab = searchParams.get('tab') ?? 'due_this_month'; // 'due_this_month' | 'overdue'
-        const page = parseInt(searchParams.get('page') ?? '1', 10);
-        const limit = parseInt(searchParams.get('limit') ?? '20', 10);
+        const tab = (searchParams.get('tab') ?? 'due_this_month').trim();
+        const page = toPositiveInt(searchParams.get('page'), 1);
+        const limit = Math.min(toPositiveInt(searchParams.get('limit'), DEFAULT_LIMIT), MAX_LIMIT);
         const offset = (page - 1) * limit;
 
         const supabase = createAdminClient();
         const today = new Date();
-        const y = today.getFullYear();
-        const m = String(today.getMonth() + 1).padStart(2, '0');
-        const d = String(today.getDate()).padStart(2, '0');
-        const todayStr = `${y}-${m}-${d}`;
 
         const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
         const monthStart = `${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, '0')}-01`;
@@ -29,7 +40,6 @@ export async function GET(request: NextRequest) {
         const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         const monthEnd = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
-        // Fetch all open tasks with their receivable and customer data
         const { data: allTasks, error } = await supabase
             .from('collection_tasks')
             .select(`
@@ -67,50 +77,47 @@ export async function GET(request: NextRequest) {
 
         if (error) {
             console.error('[collection-tasks GET] error:', error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
+            return noStoreJson({ error: error.message }, 500);
         }
 
-        // Enrich and filter
-        const enriched = (allTasks || []).map((task: any) => {
-            const rec = task.company_receivables ?? {};
-            const paid = Number(rec.amount_paid_period || 0);
-            const payable = Number(rec.amount_payable_period || 0);
-            const uncollected_amount = Math.max(0, payable - paid);
-            const dueDate = rec.payment_due_date ?? task.due_date;
-            const isOverdue = dueDate && dueDate < monthStart;
-            const overdue_days = isOverdue
-                ? Math.floor((today.getTime() - new Date(dueDate).getTime()) / 86400000)
-                : 0;
-            const days_until_due = !isOverdue && dueDate
-                ? Math.ceil((new Date(dueDate).getTime() - today.getTime()) / 86400000)
-                : null;
+        const enriched = (allTasks || [])
+            .map((task: any) => {
+                const rec = task.company_receivables ?? {};
+                const paid = Number(rec.amount_paid_period || 0);
+                const payable = Number(rec.amount_payable_period ?? 0);
+                const uncollected_amount = Math.max(0, payable - paid);
+                const dueDate = rec.payment_due_date ?? task.due_date;
+                const isOverdue = Boolean(dueDate && dueDate < monthStart);
+                const overdue_days = isOverdue
+                    ? Math.floor((today.getTime() - new Date(dueDate).getTime()) / 86400000)
+                    : 0;
+                const days_until_due = !isOverdue && dueDate
+                    ? Math.ceil((new Date(dueDate).getTime() - today.getTime()) / 86400000)
+                    : null;
 
-            return {
-                ...task,
-                uncollected_amount,
-                overdue_days,
-                days_until_due,
-                is_overdue: !!isOverdue,
-                receivable_due_date: dueDate,
-            };
-        }).filter((task: any) => task.uncollected_amount > 0); // only open / unpaid
+                return {
+                    ...task,
+                    uncollected_amount,
+                    overdue_days,
+                    days_until_due,
+                    is_overdue: isOverdue,
+                    receivable_due_date: dueDate,
+                };
+            })
+            .filter((task: any) => task.uncollected_amount > 0);
 
-        // Tab filter
         let filtered: any[];
         if (tab === 'overdue') {
             filtered = enriched.filter((t: any) => t.is_overdue);
-            // Sort: overdue_days desc, then priority asc (P0 < P1 < P2)
             filtered.sort((a: any, b: any) => {
                 if (b.overdue_days !== a.overdue_days) return b.overdue_days - a.overdue_days;
                 return (a.priority ?? 'P2').localeCompare(b.priority ?? 'P2');
             });
         } else {
-            // due_this_month: due_date falls anywhere in the current calendar month
             filtered = enriched.filter((t: any) =>
                 t.receivable_due_date >= monthStart &&
                 t.receivable_due_date <= monthEnd
             );
-            // Sort: days_until_due asc, then priority asc
             filtered.sort((a: any, b: any) => {
                 const da = a.days_until_due ?? 999;
                 const db = b.days_until_due ?? 999;
@@ -122,7 +129,7 @@ export async function GET(request: NextRequest) {
         const total = filtered.length;
         const paginated = filtered.slice(offset, offset + limit);
 
-        return NextResponse.json({
+        return noStoreJson({
             data: paginated,
             total,
             page,
@@ -131,6 +138,6 @@ export async function GET(request: NextRequest) {
         });
     } catch (err: any) {
         console.error('[collection-tasks GET] unexpected error:', err);
-        return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 });
+        return noStoreJson({ error: err?.message ?? 'Internal server error' }, 500);
     }
 }

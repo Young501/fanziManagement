@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -8,15 +8,45 @@ function createAdminClient() {
     );
 }
 
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 100;
+
+type FinanceStatusFilter = 'paid' | 'overdue' | 'unpaid' | null;
+
+function toPositiveInt(value: string | null, fallback: number) {
+    const n = Number.parseInt(value ?? '', 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function sanitizeSearch(value: string | null) {
+    return (value ?? '').trim().slice(0, 50).replace(/[,%()]/g, '');
+}
+
+function detectStatusFilter(raw: string): FinanceStatusFilter {
+    const s = raw.toLowerCase();
+    if (!s) return null;
+    if (s.includes('overdue') || s.includes('逾期') || s.includes('宸查')) return 'overdue';
+    if (s.includes('paid') || s.includes('付清') || s.includes('宸蹭')) return 'paid';
+    if (s.includes('unpaid') || s.includes('未付') || s.includes('鏈粯')) return 'unpaid';
+    return null;
+}
+
+function noStoreJson(body: unknown, status = 200) {
+    return NextResponse.json(body, {
+        status,
+        headers: { 'Cache-Control': 'no-store' },
+    });
+}
+
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
-        const page = parseInt(searchParams.get('page') ?? '1', 10);
-        const limit = parseInt(searchParams.get('limit') ?? '10', 10);
-        const search = searchParams.get('search') ?? '';
-        const status = searchParams.get('status') ?? '';
-
+        const page = toPositiveInt(searchParams.get('page'), 1);
+        const limit = Math.min(toPositiveInt(searchParams.get('limit'), DEFAULT_LIMIT), MAX_LIMIT);
+        const search = sanitizeSearch(searchParams.get('search'));
+        const statusFilter = detectStatusFilter(sanitizeSearch(searchParams.get('status')));
         const offset = (page - 1) * limit;
+
         const supabase = createAdminClient();
 
         let query = supabase
@@ -30,88 +60,46 @@ export async function GET(request: NextRequest) {
                     contact_info,
                     service_manager
                 )
-            `, { count: 'exact' });
+            `);
 
-        if (search.trim()) {
+        if (search) {
             query = query.ilike('customers.company_name', `%${search}%`);
         }
 
-        if (status.trim()) {
-            // Need to handle derived financial statuses
-            // "已付清" (Paid In Full): amount_paid_period >= amount_payable_period AND amount_payable_period > 0
-            // "已逾期" (Overdue): payment_due_date < NOW() AND amount_paid_period < amount_payable_period
-            // "未付款" (Unpaid / Partial): amount_paid_period < amount_payable_period AND payment_due_date >= NOW()
-
-            const todayStr = new Date().toISOString().split('T')[0];
-
-            if (status === '已付清') {
-                // We cannot easily do column-to-column comparisons in standard Supabase REST (amount_paid >= amount_payable).
-                // But we can filter those out post-query or via a view. For simple implementation,
-                // we'll fetch more data and filter in JS before paginating.
-                // To keep it simple, we will defer filtering to JavaScript if a status is passed for this specific requirement.
-            }
-        }
-
-        // We will fetch ALL matching the search, then filter and paginate in memory 
-        // because column comparison (paid < payable) isn't natively supported in all simple PostgREST setups without RPC.
-        // Let's modify the flow to support this.
-
-        let allDataQuery = supabase
-            .from('company_receivables')
-            .select(`
-                *,
-                customers!inner (
-                    id,
-                    company_name,
-                    contact_person,
-                    contact_info,
-                    service_manager
-                )
-            `);
-
-        if (search.trim()) {
-            allDataQuery = allDataQuery.ilike('customers.company_name', `%${search}%`);
-        }
-
-        const { data: allData, error } = await allDataQuery.order('payment_due_date', { ascending: true });
+        const { data: allData, error } = await query.order('payment_due_date', { ascending: true });
 
         if (error) {
             console.error('[finance customers API] error:', error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
+            return noStoreJson({ error: error.message }, 500);
         }
 
         let filteredData = allData || [];
 
-        if (status.trim()) {
-            const now = new Date().getTime();
+        if (statusFilter) {
+            const now = Date.now();
             filteredData = filteredData.filter((item: any) => {
-                const _paid = Number(item.amount_paid_period || 0);
-                const _payable = Number(item.amount_payable_period || 0);
+                const paid = Number(item.amount_paid_period || 0);
+                const payable = Number(item.amount_payable_period || 0);
                 const isOverdue = item.payment_due_date ? new Date(item.payment_due_date).getTime() < now : false;
 
-                if (status === '已付清') {
-                    return _paid >= _payable && _payable > 0;
-                } else if (status === '已逾期') {
-                    return _paid < _payable && isOverdue;
-                } else if (status === '未付款') {
-                    return _paid < _payable && !isOverdue;
-                }
-                return true;
+                if (statusFilter === 'paid') return paid >= payable && payable > 0;
+                if (statusFilter === 'overdue') return paid < payable && isOverdue;
+                return paid < payable && !isOverdue;
             });
         }
 
-        const count = filteredData.length;
+        const total = filteredData.length;
         const paginatedData = filteredData.slice(offset, offset + limit);
 
-        return NextResponse.json({
+        return noStoreJson({
             data: paginatedData,
-            total: count,
+            total,
             page,
             limit,
-            totalPages: Math.ceil(count / limit),
+            totalPages: Math.ceil(total / limit),
         });
     } catch (err: any) {
         console.error('[finance customers API] unexpected error:', err);
-        return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 });
+        return noStoreJson({ error: err?.message ?? 'Internal server error' }, 500);
     }
 }
