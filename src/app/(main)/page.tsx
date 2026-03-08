@@ -40,7 +40,8 @@ export default async function Home() {
   // 1. Get total customers
   const { count: totalCustomers } = await supabase
     .from('customers')
-    .select('*', { count: 'exact', head: true });
+    .select('*', { count: 'exact', head: true })
+    .neq('customer_status', '流失');
 
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -52,7 +53,8 @@ export default async function Home() {
   const { count: thisMonthNewCustomers } = await supabase
     .from('customers')
     .select('*', { count: 'exact', head: true })
-    .gte('created_at', actualMonthStart);
+    .gte('created_at', actualMonthStart)
+    .neq('customer_status', '流失');
 
   // Get most recent 5 customers for the widget list
   const { data: recentNewCustomers } = await supabase

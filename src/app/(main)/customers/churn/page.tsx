@@ -15,6 +15,7 @@ export default function ChurnRegistrationPage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showSuccess, setShowSuccess] = useState(false);
 
     // Form State
     const [churnType, setChurnType] = useState('');
@@ -67,8 +68,8 @@ export default function ChurnRegistrationPage() {
             const res = await fetch(`/api/customers/churn/history?page=${page}&limit=${limit}`);
             if (!res.ok) throw new Error('获取历史记录失败');
             const data = await res.json();
-            setRecords(data.data);
-            setTotal(data.total);
+            setRecords(data.data || []);
+            setTotal(data.total ?? data.count ?? 0);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -100,6 +101,10 @@ export default function ChurnRegistrationPage() {
             return;
         }
 
+        if (!confirm('请确认流失登记信息填写无误。\n\n提交后该客户状态将自动更新为“流失”，确定提交吗？')) {
+            return;
+        }
+
         setSubmitting(true);
         setError(null);
 
@@ -124,8 +129,12 @@ export default function ChurnRegistrationPage() {
                 throw new Error(data.error || '登记失败');
             }
 
-            alert('流失登记成功');
-            setActiveTab('history');
+            setShowSuccess(true);
+            setTimeout(() => {
+                setShowSuccess(false);
+                setActiveTab('history');
+            }, 3000);
+
             // Reset form
             setSelectedCustomerId('');
             setChurnType('');
@@ -207,7 +216,21 @@ export default function ChurnRegistrationPage() {
                                 </div>
                             </div>
 
-                            <div className="p-6 sm:p-8">
+                            <div className="p-6 sm:p-8 relative">
+                                {showSuccess && (
+                                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-sm transition-all duration-500 rounded-2xl">
+                                        <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </div>
+                                            <h3 className="text-xl font-bold text-slate-800">流失登记成功</h3>
+                                            <p className="text-slate-500 mt-1">记录已成功存档，正在跳转...</p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {error && (
                                     <div className="mb-6 bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 text-sm flex items-center justify-between">
                                         <div className="flex items-center gap-2">
@@ -344,7 +367,7 @@ export default function ChurnRegistrationPage() {
                                 </div>
                             ) : (
                                 <>
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto flex-1">
                                         <table className="w-full border-collapse">
                                             <thead>
                                                 <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -359,7 +382,7 @@ export default function ChurnRegistrationPage() {
                                                 {records.map((record) => (
                                                     <tr key={record.id} className="hover:bg-slate-50/30 transition-colors group">
                                                         <td className="px-6 py-4">
-                                                            <div className="font-medium text-slate-900">{record.company_name}</div>
+                                                            <div className="font-medium text-slate-900">{record.company_name || '未知客户'}</div>
                                                             <div className="text-xs text-slate-400 mt-0.5">{record.churn_type}</div>
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-slate-600">

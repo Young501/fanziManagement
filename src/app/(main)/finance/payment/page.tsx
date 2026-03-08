@@ -202,7 +202,7 @@ function PaymentEntryContent() {
             hasAutoFilled.current = true;
             setCustomerLoading(true);
             setCustomerSearch(initCustomerName);
-            fetch(`/api/customers?search=${encodeURIComponent(initCustomerName)}&limit=10`)
+            fetch(`/api/customers?search=${encodeURIComponent(initCustomerName)}&limit=10&include_churned=false`)
                 .then(res => res.json())
                 .then(json => {
                     const list: Customer[] = json.data || [];
@@ -291,7 +291,7 @@ function PaymentEntryContent() {
         searchDebounce.current = setTimeout(async () => {
             setCustomerLoading(true);
             try {
-                const res = await fetch(`/api/customers?search=${encodeURIComponent(value)}&limit=8`);
+                const res = await fetch(`/api/customers?search=${encodeURIComponent(value)}&limit=8&include_churned=false`);
                 const json = await res.json();
                 setCustomerResults(json.data || []);
             } catch { setCustomerResults([]); }

@@ -58,13 +58,15 @@ export async function GET(request: NextRequest) {
                     company_name,
                     contact_person,
                     contact_info,
-                    service_manager
+                    service_manager,
+                    customer_status
                 ),
                 payment_records (
                     paid_at,
                     paid_amount
                 )
-            `);
+            `)
+            .neq('customers.customer_status', '流失');
 
         if (search) {
             query = query.ilike('customers.company_name', `%${search}%`);

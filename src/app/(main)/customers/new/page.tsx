@@ -86,8 +86,8 @@ export default function NewCustomerPage() {
             const res = await fetch(`/api/customers/new/history?page=${page}&limit=${limit}`);
             if (!res.ok) throw new Error('获取历史记录失败');
             const data = await res.json();
-            setRecords(data.data);
-            setTotal(data.total);
+            setRecords(data.data || []);
+            setTotal(data.total ?? data.count ?? 0);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -120,6 +120,10 @@ export default function NewCustomerPage() {
         }
         if (!standardPrice || !payCycleMonths || !effectiveDate) {
             setError('请填写服务价格相关的必填项 (标准报价、收款周期、生效日期)');
+            return;
+        }
+
+        if (!confirm('请确认新客户建档信息填写无误。\n\n确定要提交并创建该客户档案吗？')) {
             return;
         }
 
@@ -606,7 +610,7 @@ export default function NewCustomerPage() {
                                 </div>
                             ) : (
                                 <>
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto flex-1">
                                         <table className="w-full border-collapse">
                                             <thead>
                                                 <tr className="bg-slate-50/50 border-b border-slate-100">

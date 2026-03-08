@@ -37,7 +37,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             return NextResponse.json({ error: insertError.message }, { status: 500 });
         }
 
-        // 2. Update customer status to '流失'
+        // 2. Delete all existing collection tasks for this customer
+        const { error: deleteTasksError } = await supabase
+            .from('collection_tasks')
+            .delete()
+            .eq('customer_id', id);
+
+        if (deleteTasksError) {
+            console.error('[churn API] Delete tasks error:', deleteTasksError);
+            // Non-critical error, we continue to update customer status
+        }
+
+        // 3. Update customer status to '流失'
         const { error: updateError } = await supabase
             .from('customers')
             .update({ customer_status: '流失' })
