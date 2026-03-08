@@ -71,12 +71,15 @@ export async function GET(_request: NextRequest) {
             }
         }
 
+        // Count unique customers
+        const uniqueCustomerIds = new Set((receivables || []).map(r => r.customer_id).filter(Boolean));
+
         return noStoreJson({
             totalPayable,
             totalPaid,
             arrearsCount: arrearsCustomerIds.size,
-            normalCount: (receivables?.length || 0) - arrearsCustomerIds.size,
-            totalReceivables: receivables?.length || 0,
+            normalCount: uniqueCustomerIds.size - arrearsCustomerIds.size,
+            totalReceivables: uniqueCustomerIds.size,
         });
     } catch (err: any) {
         console.error('[finance customers stats API] unexpected error:', err);

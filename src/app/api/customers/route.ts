@@ -1,12 +1,6 @@
-﻿import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 
-function createAdminClient() {
-    return createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-}
+import { createClient } from '@/utils/supabase/server';
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
@@ -42,7 +36,13 @@ export async function GET(request: NextRequest) {
 
         const includeChurned = searchParams.get('include_churned') === 'true';
         const offset = (page - 1) * limit;
-        const supabase = createAdminClient();
+
+        const supabase = await createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+            return noStoreJson({ error: 'Unauthorized' }, 401);
+        }
 
         let query = supabase.from('customers').select('*', { count: 'exact' });
 

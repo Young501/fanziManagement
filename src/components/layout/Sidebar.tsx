@@ -33,9 +33,9 @@ const navItems: NavItem[] = [
         icon: Banknote,
         subItems: [
             { name: '客户信息', href: '/finance/customers' },
-            { name: '收款录入', href: '/finance/payment' },
-            { name: '收款历史记录', href: '/finance/payment/history' },
-            { name: '催款任务', href: '/finance/collection-tasks' }
+            { name: '催款任务', href: '/finance/collection-tasks' },
+            { name: '收款记录', href: '/finance/payment' },
+            { name: '成本记录', href: '/finance/expenses' }
         ]
     },
     {

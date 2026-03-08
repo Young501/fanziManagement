@@ -1,4 +1,5 @@
 ﻿import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -40,6 +41,11 @@ function noStoreJson(body: unknown, status = 200) {
 
 export async function POST(request: NextRequest) {
     try {
+        // Auth check
+        const authSupabase = await createServerClient();
+        const { data: { user } } = await authSupabase.auth.getUser();
+        if (!user) return noStoreJson({ error: '未授权，请先登录' }, 401);
+
         const body = await request.json();
         const {
             customer_id,

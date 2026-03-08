@@ -1,15 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { Database, Users, ArrowUpRight, Activity } from 'lucide-react';
-import { createClient as createSupabaseJSClient } from '@supabase/supabase-js';
 import { createClient } from '@/utils/supabase/server';
-
-function createAdminClient() {
-  return createSupabaseJSClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 function formatDate(dateStr: string) {
   if (!dateStr) return '';
@@ -18,13 +10,12 @@ function formatDate(dateStr: string) {
 }
 
 export default async function Home() {
-  const supabase = createAdminClient();
   const serverClient = await createClient();
   const { data: { user } } = await serverClient.auth.getUser();
 
   let adminName = 'Admin';
   if (user) {
-    const { data: profile } = await supabase
+    const { data: profile } = await serverClient
       .from('profiles')
       .select('full_name')
       .eq('id', user.id)
@@ -38,7 +29,7 @@ export default async function Home() {
   }
 
   // 1. Get total customers
-  const { count: totalCustomers } = await supabase
+  const { count: totalCustomers } = await serverClient
     .from('customers')
     .select('*', { count: 'exact', head: true })
     .neq('customer_status', '流失');
@@ -50,14 +41,14 @@ export default async function Home() {
 
   // 2. Get current month's new customers count
   const actualMonthStart = monthStart < '2026-03-10' ? '2026-03-10' : monthStart;
-  const { count: thisMonthNewCustomers } = await supabase
+  const { count: thisMonthNewCustomers } = await serverClient
     .from('customers')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', actualMonthStart)
     .neq('customer_status', '流失');
 
   // Get most recent 5 customers for the widget list
-  const { data: recentNewCustomers } = await supabase
+  const { data: recentNewCustomers } = await serverClient
     .from('customers')
     .select('id, company_name, created_at, contact_person')
     .gte('created_at', '2026-03-10')
@@ -66,7 +57,7 @@ export default async function Home() {
 
   // 3. Collection tasks analysis
 
-  const { data: allTasks } = await supabase
+  const { data: allTasks } = await serverClient
     .from('collection_tasks')
     .select(`
         id,
@@ -102,7 +93,7 @@ export default async function Home() {
   });
 
   // 4. Recent Payment Records
-  const { data: recentPayments } = await supabase
+  const { data: recentPayments } = await serverClient
     .from('payment_records')
     .select(`
         id,
@@ -116,7 +107,7 @@ export default async function Home() {
     .limit(5);
 
   // 5. Churned Customers
-  const { data: churnedCustomers } = await supabase
+  const { data: churnedCustomers } = await serverClient
     .from('customer_churn_logs')
     .select(`
         id,

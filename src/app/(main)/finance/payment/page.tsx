@@ -486,12 +486,6 @@ function PaymentEntryContent() {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900">收款录入</h1>
-                <p className="text-sm text-slate-500 mt-1">选择客户和账单，录入收款信息，系统自动更新账单状态。</p>
-            </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* LEFT: Customer + Form */}
                 <div className="lg:col-span-2 space-y-5">
@@ -1264,15 +1258,225 @@ function PaymentEntryContent() {
     );
 }
 
-export default function PaymentEntryPage() {
+// ─── History Tab Content ───────────────────────────────────────────────────
+function PaymentHistoryContent() {
+    const [loading, setLoading] = useState(true);
+    const [data, setData] = useState<any[]>([]);
+    const [count, setCount] = useState(0);
+    const [page, setPage] = useState(1);
+    const [role, setRole] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+    const limit = 20;
+
+    useEffect(() => {
+        fetchData();
+    }, [page]);
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/finance/payment/history?page=${page}&limit=${limit}`);
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+            setData(json.data || []);
+            setCount(json.count || 0);
+            setRole(json.role);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm('确定要删除这条收款记录吗？\n删除后系统将尝试回退对应账单的已收金额。此操作不可撤销。')) return;
+        setDeleteLoading(id);
+        try {
+            const res = await fetch(`/api/finance/payment/history?id=${id}`, { method: 'DELETE' });
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+            setData(prev => prev.filter(item => item.id !== id));
+            setCount(prev => prev - 1);
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setDeleteLoading(null);
+        }
+    };
+
     return (
-        <Suspense fallback={
-            <div className="flex h-[50vh] items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+        <div className="space-y-4">
+            {error && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="text-sm">{error}</span>
+                </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                        <thead>
+                            <tr className="bg-slate-50/80 border-b border-slate-200">
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">收款日期</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">客户名称</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">收款金额</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">优惠金额</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">收款方式</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">类型</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">凭证</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider w-20">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 relative">
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={8} className="py-20 text-center">
+                                        <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
+                                        <p className="text-slate-400 mt-2">加载数据中...</p>
+                                    </td>
+                                </tr>
+                            ) : data.length === 0 ? (
+                                <tr>
+                                    <td colSpan={8} className="py-20 text-center text-slate-500">暂无收款记录</td>
+                                </tr>
+                            ) : (
+                                data.map((item) => (
+                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="py-4 px-4 text-slate-500 whitespace-nowrap text-center">{item.paid_at}</td>
+                                        <td className="py-4 px-4 font-medium text-slate-900 text-center">{item.customers?.company_name || '未知客户'}</td>
+                                        <td className="py-4 px-4 text-center font-bold text-emerald-600 font-mono">{formatCurrency(item.paid_amount)}</td>
+                                        <td className="py-4 px-4 text-center">
+                                            {item.negotiated_discount_amount > 0 ? (
+                                                <span className="text-orange-600 font-semibold font-mono">-{formatCurrency(item.negotiated_discount_amount)}</span>
+                                            ) : (
+                                                <span className="text-slate-400">-</span>
+                                            )}
+                                        </td>
+                                        <td className="py-4 px-4 text-slate-600 text-center">{item.method || '-'}</td>
+                                        <td className="py-4 px-4 text-center">
+                                            {item.company_receivables?.billing_fee_month ? (
+                                                <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs">月费收款</span>
+                                            ) : (
+                                                <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-xs">一次性收款</span>
+                                            )}
+                                        </td>
+                                        <td className="py-4 px-4 text-center">
+                                            {item.screenshot ? (
+                                                <button
+                                                    onClick={() => setPreviewImage(item.screenshot)}
+                                                    className="p-1.5 bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all mx-auto"
+                                                    title="查看凭证"
+                                                >
+                                                    <ImageIcon className="w-4 h-4" />
+                                                </button>
+                                            ) : (
+                                                <span className="text-slate-300">-</span>
+                                            )}
+                                        </td>
+                                        <td className="py-4 px-4 text-center">
+                                            {role === 'admin' && (
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    disabled={deleteLoading === item.id}
+                                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                    title="删除记录"
+                                                >
+                                                    {deleteLoading === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {count > limit && (
+                    <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                        <div className="text-sm text-slate-500">共 {count} 条记录</div>
+                        <div className="flex gap-2">
+                            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50">上一页</button>
+                            <span className="px-3 py-1 text-sm font-medium">第 {page} 页</span>
+                            <button onClick={() => setPage(p => p + 1)} disabled={page * limit >= count} className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50">下一页</button>
+                        </div>
+                    </div>
+                )}
             </div>
-        }>
-            <PaymentEntryContent />
-        </Suspense>
+
+            {/* Image Preview Modal */}
+            {previewImage && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                                <ImageIcon className="w-5 h-5 text-blue-500" /> 收款凭证预览
+                            </h3>
+                            <button onClick={() => setPreviewImage(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-slate-50/50">
+                            <img src={previewImage} alt="Payment Screenshot" className="max-w-full h-auto object-contain rounded-lg" />
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
+                            <a href={previewImage} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all">查看原图</a>
+                            <button onClick={() => setPreviewImage(null)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl transition-all border border-slate-200">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+export default function PaymentEntryPage() {
+    const [activeTab, setActiveTab] = useState<'entry' | 'history'>('entry');
+
+    return (
+        <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Header + Tabs */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-900">收款记录</h1>
+                    <p className="text-sm text-slate-500 mt-1">录入收款信息或查看收款历史明细。</p>
+                </div>
+                <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+                    <button
+                        onClick={() => setActiveTab('entry')}
+                        className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'entry'
+                            ? 'bg-white text-blue-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                    >
+                        收款录入
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('history')}
+                        className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'history'
+                            ? 'bg-white text-blue-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                    >
+                        历史记录
+                    </button>
+                </div>
+            </div>
+
+            {activeTab === 'entry' ? (
+                <Suspense fallback={
+                    <div className="flex h-[50vh] items-center justify-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                    </div>
+                }>
+                    <PaymentEntryContent />
+                </Suspense>
+            ) : (
+                <PaymentHistoryContent />
+            )}
+        </div>
     );
 }
 
