@@ -96,7 +96,7 @@ export default function NewContractPage() {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-slate-50 overflow-auto">
+        <div className="flex flex-col bg-slate-50">
             <main className="flex-1 p-4 sm:p-6 lg:p-8">
                 <div className="max-w-4xl mx-auto">
                     <form id="new-contract-form" onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">

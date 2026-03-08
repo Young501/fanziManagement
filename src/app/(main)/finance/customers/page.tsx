@@ -225,9 +225,9 @@ export default function FinanceCustomersPage() {
 
         if (_status === 'paid' || _status === 'pending') {
             // Logic: 
-            // 1. If today is more than 45 days before the next due date, show as 'Waiting for Next Cycle'
-            // 2. If it's within 45 days, it becomes 'Unpaid' to warn the collection team.
-            if (diffDays <= 45) {
+            // 1. If today is more than 60 days before the next due date, show as 'Waiting for Next Cycle'
+            // 2. If it's within 60 days, it becomes 'Unpaid' to warn the collection team.
+            if (diffDays <= 60) {
                 return { label: '未付款', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200', icon: Wallet };
             }
             return { label: '待收下期', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: CheckCircle2 };
@@ -251,7 +251,7 @@ export default function FinanceCustomersPage() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-slate-900">财务客户列表</h1>
-                    <p className="text-sm text-slate-500 mt-1">只展示核心财务数据，全方位掌握客户的资金与收费状态。</p>
+                    <p className="text-sm text-slate-500 mt-1">展示核心财务数据与最新收款进度，全方位掌握客户收费状态。</p>
                 </div>
                 <div className="flex gap-3 w-full sm:w-auto">
                     {/* Status Filter Button */}
@@ -298,7 +298,7 @@ export default function FinanceCustomersPage() {
                         <Wallet className="w-6 h-6 text-blue-600" />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-slate-500">总应收金额</p>
+                        <p className="text-sm font-medium text-slate-500">年总应收金额</p>
                         <div className="mt-1">
                             {statsLoading ? <div className="h-7 w-24 bg-slate-100 animate-pulse rounded"></div> : <h3 className="text-xl font-bold text-slate-900">{formatCurrency(stats?.totalPayable, 0)}</h3>}
                         </div>
@@ -310,7 +310,7 @@ export default function FinanceCustomersPage() {
                         <CheckCircle2 className="w-6 h-6 text-emerald-600" />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-slate-500">已付金额汇总</p>
+                        <p className="text-sm font-medium text-slate-500">年已付金额汇总</p>
                         <div className="mt-1">
                             {statsLoading ? <div className="h-7 w-24 bg-slate-100 animate-pulse rounded"></div> : <h3 className="text-xl font-bold text-slate-900">{formatCurrency(stats?.totalPaid, 0)}</h3>}
                         </div>

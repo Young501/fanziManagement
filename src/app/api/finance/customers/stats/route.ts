@@ -18,60 +18,46 @@ function noStoreJson(body: unknown, status = 200) {
 export async function GET(_request: NextRequest) {
     try {
         const supabase = createAdminClient();
+        const now = new Date();
+        const currentYear = now.getFullYear();
 
-        const { data, error } = await supabase
+        // Query all relevant receivables
+        const { data: receivables, error: recErr } = await supabase
             .from('company_receivables')
-            .select('id, amount_payable_period, amount_paid_period, status, payment_due_date, customer_id');
+            .select('amount_payable_period, amount_paid_period, status, payment_due_date, customer_id');
 
-        if (error) {
-            console.error('[finance customers stats API] error:', error);
-            return noStoreJson({ error: error.message }, 500);
+        if (recErr) {
+            console.error('[finance customers stats API] receivables error:', recErr);
+            return noStoreJson({ error: recErr.message }, 500);
         }
 
-        let totalPayable = 0;
-        let totalPaid = 0;
-
-        // Fetch payment records to calculate true paid amount
-        const recIds = data?.map(r => r.id) || [];
-        const { data: allPayments } = await supabase
-            .from('payment_records')
-            .select('receivable_id, paid_amount')
-            .in('receivable_id', recIds);
-
-        const paymentMap: Record<string, number> = {};
-        allPayments?.forEach(p => {
-            paymentMap[p.receivable_id] = (paymentMap[p.receivable_id] || 0) + Number(p.paid_amount || 0);
-        });
-
+        let totalPayable = 0; // 年度应收 = 过去年的逾期 + 今年的待付款
+        let totalPaid = 0;    // 年度已付汇总 = 应付日期在今年的收款
         const arrearsCustomerIds = new Set<string>();
-        const now = Date.now();
 
-        for (const r of data || []) {
+        for (const r of receivables || []) {
+            const dueDate = r.payment_due_date ? new Date(r.payment_due_date) : null;
+            if (!dueDate) continue;
+
+            const dueDateYear = dueDate.getFullYear();
             const payable = Number(r.amount_payable_period || 0);
-            totalPayable += payable;
+            const paid = Number(r.amount_paid_period || 0);
+            const remaining = Math.max(0, payable - paid);
 
-            const sumPaid = paymentMap[(r as any).id] || 0;
-            const statusText = String(r.status || 'unpaid').toLowerCase();
-            const isActuallyPaid = statusText === 'paid';
-            const isPending = statusText === 'pending';
+            // 1. 计算年度应收：过去年的逾期单 (remaining > 0) + 今年的待付款单 (remaining > 0)
+            if (dueDateYear <= currentYear && remaining > 0) {
+                totalPayable += remaining;
 
-            let effectivePaid = sumPaid;
-            if (isActuallyPaid) {
-                effectivePaid = sumPaid > 0 ? sumPaid : payable;
-            } else if (isPending && sumPaid === 0) {
-                effectivePaid = Number((r as any).current_receipt_amount || 0);
+                // 逾期统计：应付日期已过且还有欠款
+                if (dueDate.getTime() < now.getTime()) {
+                    if (r.customer_id) arrearsCustomerIds.add(r.customer_id);
+                }
             }
 
-            totalPaid += effectivePaid;
-
-            const isOverdue = r.payment_due_date ? new Date(r.payment_due_date).getTime() < now : false;
-            const dueDateTs = r.payment_due_date ? new Date(r.payment_due_date).getTime() : 0;
-            const isWithin45Days = dueDateTs > 0 && (dueDateTs - now) <= (45 * 24 * 60 * 60 * 1000);
-
-            // Arrears should only count records that are TRULY unpaid and PAST due date.
-            // Even if a 'paid' record is within 45 days, it's not 'Arrears' (欠费) yet.
-            if (!isActuallyPaid && !isPending && isOverdue) {
-                if (r.customer_id) arrearsCustomerIds.add(r.customer_id);
+            // 2. 计算年度已付汇总：统计 应付日期在今年的单子 的已付金额
+            // 无论是否付清，只要这笔账是算在今年的，它的已收金额就计入年度汇总
+            if (dueDateYear === currentYear) {
+                totalPaid += paid;
             }
         }
 
@@ -79,8 +65,8 @@ export async function GET(_request: NextRequest) {
             totalPayable,
             totalPaid,
             arrearsCount: arrearsCustomerIds.size,
-            normalCount: (data?.length || 0) - arrearsCustomerIds.size,
-            totalReceivables: data?.length || 0,
+            normalCount: (receivables?.length || 0) - arrearsCustomerIds.size,
+            totalReceivables: receivables?.length || 0,
         });
     } catch (err: any) {
         console.error('[finance customers stats API] unexpected error:', err);

@@ -87,6 +87,8 @@ export async function POST(request: NextRequest) {
                     status: 'paid',
                     receipt_note: ad_hoc_service_name,
                     note: '一次性临时业务入账',
+                    current_receipt_date: paid_at,
+                    current_receipt_amount: amount,
                 })
                 .select('id')
                 .single();
@@ -160,22 +162,21 @@ export async function POST(request: NextRequest) {
         }
 
         const newPaid = paidSoFar + amount;
+        const isFinishing = newPaid >= currentPayable - 0.01;
         const dueDateForStatus = renewal?.payment_due_date ?? currentReceivable.payment_due_date;
-        const newStatus = calcStatus(newPaid, currentPayable, dueDateForStatus);
+        const newStatus = isFinishing ? 'paid' : calcStatus(newPaid, currentPayable, dueDateForStatus);
 
         // Logic fix: 
-        // 1. If we are NOT renewing, we just update to newStatus (paid/partial/unpaid).
-        // 2. If we ARE renewing, it means the CURRENT period is now 'paid'. 
-        // We set the status to 'paid' first so that the change logs and final state (if viewed mid-process) are correct.
-        // Then the renewal logic will prepare the record for the NEXT cycle (pending/0 paid).
+        // 1. We ALWAYS update the current record with the final paid amount and status.
+        // 2. We NO LONGER reset amount_paid_period to 0 on the CURRENT record.
         const receivableUpdates: Record<string, unknown> = {
-            amount_paid_period: renewal ? 0 : newPaid,
-            status: renewal ? 'paid' : newStatus,
+            amount_paid_period: newPaid,
+            status: newStatus,
             current_receipt_date: paid_at,
             current_receipt_amount: amount,
         };
 
-        if (discounted_payable !== undefined && !renewal) {
+        if (discounted_payable !== undefined) {
             receivableUpdates.amount_payable_period = Number(discounted_payable);
         }
 
@@ -201,47 +202,7 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        if (renewal) {
-            if (!change_reasons || typeof change_reasons !== 'object') {
-                return noStoreJson({ error: '存在账单变更，请填写变更原因' }, 400);
-            }
-
-            // The original loop was correct for TRACKED_RENEWAL_FIELDS.
-            // The provided edit seems to try to iterate over all keys in `renewal`
-            // and uses `oldVal`/`newVal` which are not defined in that context.
-            // Reverting to the original logic for TRACKED_RENEWAL_FIELDS and fixing `receivable` to `currentReceivable`.
-            for (const { key, label } of TRACKED_RENEWAL_FIELDS) {
-                if (renewal[key] === undefined) continue;
-
-                const oldVal = (currentReceivable as any)[key];
-                const newVal = (renewal as any)[key];
-                const oldStr = oldVal === null || oldVal === undefined ? '' : String(oldVal);
-                const newStr = newVal === null || newVal === undefined ? '' : String(newVal);
-
-                // For a renewal, we always apply the new values to ensure price reset and date advancement
-                // but we only log them if they actually changed relative to the old cycle.
-                receivableUpdates[key] = newVal;
-
-                if (oldStr === newStr) continue;
-
-                // Determine change_type based on the field
-                let typeOfChange = 'renewal_confirmation';
-                if (['amount_payable_period', 'standard_price', 'discount_gap'].includes(key)) {
-                    typeOfChange = 'adjustment';
-                }
-
-                changeLogs.push({
-                    customer_id,
-                    receivable_id,
-                    change_reason: String(change_reasons[key]),
-                    change_type: typeOfChange,
-                    field_name: key,
-                    old_value: oldStr || null,
-                    new_value: newStr || null,
-                });
-            }
-        }
-
+        // Apply changes to the CURRENT record
         const { error: updateErr } = await supabase
             .from('company_receivables')
             .update(receivableUpdates)
@@ -250,6 +211,67 @@ export async function POST(request: NextRequest) {
         if (updateErr) {
             console.error('[payment API] update receivable error:', updateErr);
             return noStoreJson({ error: updateErr.message }, 500);
+        }
+
+        // NEW: If finished and renewal info exists, create the NEXT CYCLE record
+        if (isFinishing && renewal) {
+            const nextReceivableData = {
+                customer_id,
+                status: 'unpaid',
+                amount_paid_period: 0,
+                // Fields from renewal
+                has_contract: renewal.has_contract,
+                contract_end_date: renewal.contract_end_date,
+                payment_due_date: renewal.payment_due_date,
+                pay_cycle_months: renewal.pay_cycle_months,
+                billing_fee_month: renewal.billing_fee_month,
+                amount_payable_period: renewal.amount_payable_period,
+                standard_price: renewal.standard_price,
+                discount_gap: renewal.discount_gap,
+                // Any other context we want to carry over
+                note: `由账单 ${receivable_id} 完清后自动生成`
+            };
+
+            const { data: nextRec, error: createErr } = await supabase
+                .from('company_receivables')
+                .insert(nextReceivableData)
+                .select('id')
+                .single();
+
+            if (createErr) {
+                console.error('[payment API] create next cycle receivable error:', createErr);
+                // We don't fail the whole request since the payment was already recorded, but we log it.
+            }
+
+            // Log changes as part of the renewal confirmation
+            if (change_reasons && typeof change_reasons === 'object') {
+                for (const { key, label } of TRACKED_RENEWAL_FIELDS) {
+                    if (renewal[key] === undefined) continue;
+
+                    const oldVal = (currentReceivable as any)[key];
+                    const newVal = (renewal as any)[key];
+                    const oldStr = oldVal === null || oldVal === undefined ? '' : String(oldVal);
+                    const newStr = newVal === null || newVal === undefined ? '' : String(newVal);
+
+                    if (oldStr === newStr) continue;
+
+                    // Determine change_type based on the field
+                    let typeOfChange = 'renewal_confirmation';
+                    if (['amount_payable_period', 'standard_price', 'discount_gap'].includes(key)) {
+                        typeOfChange = 'adjustment';
+                    }
+
+                    changeLogs.push({
+                        customer_id,
+                        receivable_id, // Keep linked to the record where the action happened
+                        change_reason: String(change_reasons[key] || '系统自动顺延'),
+                        change_type: typeOfChange,
+                        field_name: key,
+                        old_value: oldStr || null,
+                        new_value: newStr || null,
+                    });
+                }
+            }
         }
 
         if (changeLogs.length > 0) {

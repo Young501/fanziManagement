@@ -11,7 +11,10 @@ type NavItem = {
     name: string;
     href?: string;
     icon: LucideIcon;
-    subItems?: { name: string; href: string }[];
+    subItems?: (
+        | { name: string; href: string }
+        | { name: string; subItems: { name: string; href: string }[] }
+    )[];
 };
 
 const navItems: NavItem[] = [
@@ -21,8 +24,8 @@ const navItems: NavItem[] = [
         icon: Briefcase,
         subItems: [
             { name: '客户档案', href: '/customers' },
-            { name: '新客户建档', href: '/customers/new' },
-            { name: '客户流失登记', href: '/customers/churn' }
+            { name: '新增客户', href: '/customers/new' },
+            { name: '流失客户', href: '/customers/churn' }
         ]
     },
     {
@@ -31,6 +34,7 @@ const navItems: NavItem[] = [
         subItems: [
             { name: '客户信息', href: '/finance/customers' },
             { name: '收款录入', href: '/finance/payment' },
+            { name: '收款历史记录', href: '/finance/payment/history' },
             { name: '催款任务', href: '/finance/collection-tasks' }
         ]
     },
@@ -58,7 +62,11 @@ export function Sidebar() {
 
     useEffect(() => {
         navItems.forEach((item) => {
-            if (item.subItems && item.subItems.some((sub) => pathname.startsWith(sub.href))) {
+            if (item.subItems && item.subItems.some((sub: any) => {
+                if (sub.href) return pathname.startsWith(sub.href);
+                if (sub.subItems) return sub.subItems.some((child: any) => pathname.startsWith(child.href));
+                return false;
+            })) {
                 setExpandedGroups((prev) => ({ ...prev, [item.name]: true }));
             }
         });
@@ -98,7 +106,7 @@ export function Sidebar() {
             <div className="h-16 flex items-center px-6 border-b border-slate-200/80">
                 <img
                     src="/logo.png"
-                    alt="鍏徃 Logo"
+                    alt="Logo"
                     className="h-8 max-w-full mr-3 object-contain"
                     onError={(e) => {
                         e.currentTarget.style.display = 'none';
@@ -112,7 +120,11 @@ export function Sidebar() {
                     {navItems.map((item) => {
                         const hasSubItems = !!item.subItems;
                         const isActiveExact = pathname === item.href;
-                        const isGroupActive = hasSubItems && item.subItems!.some((sub) => pathname.startsWith(sub.href));
+                        const isGroupActive = hasSubItems && item.subItems!.some((sub: any) => {
+                            if (sub.href) return pathname.startsWith(sub.href);
+                            if (sub.subItems) return sub.subItems.some((child: any) => pathname.startsWith(child.href));
+                            return false;
+                        });
                         const isExpanded = !!expandedGroups[item.name];
                         const Icon = item.icon;
 
@@ -121,54 +133,76 @@ export function Sidebar() {
                                 <div key={item.name} className="space-y-1.5">
                                     <button
                                         onClick={() => toggleGroup(item.name)}
-                                        className={`group w-full relative flex items-center justify-between px-4 py-3 rounded-xl border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                            isGroupActive
-                                                ? 'bg-gradient-to-r from-blue-50 to-cyan-50 text-blue-700 font-semibold border-blue-100'
-                                                : 'border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200'
-                                        }`}
+                                        className={`group w-full relative flex items-center justify-between px-4 py-3 rounded-xl border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isGroupActive
+                                            ? 'bg-gradient-to-r from-blue-50 to-cyan-50 text-blue-700 font-semibold border-blue-100'
+                                            : 'border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200'
+                                            }`}
                                     >
                                         <div className="flex items-center relative z-10">
                                             <Icon
-                                                className={`w-5 h-5 mr-3 transition-colors duration-300 ${
-                                                    isGroupActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
-                                                }`}
+                                                className={`w-5 h-5 mr-3 transition-colors duration-300 ${isGroupActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
+                                                    }`}
                                             />
                                             <span>{item.name}</span>
                                         </div>
                                         {isExpanded ? (
                                             <ChevronDown
-                                                className={`w-4 h-4 transition-all duration-300 relative z-10 ${
-                                                    isGroupActive ? 'text-blue-600' : 'text-slate-400'
-                                                }`}
+                                                className={`w-4 h-4 transition-all duration-300 relative z-10 ${isGroupActive ? 'text-blue-600' : 'text-slate-400'
+                                                    }`}
                                             />
                                         ) : (
                                             <ChevronRight
-                                                className={`w-4 h-4 transition-all duration-300 relative z-10 ${
-                                                    isGroupActive ? 'text-blue-600' : 'text-slate-400'
-                                                }`}
+                                                className={`w-4 h-4 transition-all duration-300 relative z-10 ${isGroupActive ? 'text-blue-600' : 'text-slate-400'
+                                                    }`}
                                             />
                                         )}
                                     </button>
 
                                     <div
-                                        className={`grid transition-[grid-template-rows,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                            isExpanded ? 'grid-rows-[1fr] opacity-100 translate-y-0' : 'grid-rows-[0fr] opacity-70 -translate-y-1'
-                                        }`}
+                                        className={`grid transition-[grid-template-rows,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 translate-y-0' : 'grid-rows-[0fr] opacity-70 -translate-y-1'
+                                            }`}
                                     >
                                         <div className="overflow-hidden">
                                             <div className="pl-11 pr-2 py-1.5 space-y-1">
-                                                {item.subItems!.map((sub) => {
+                                                {item.subItems!.map((sub: any) => {
+                                                    if (sub.subItems) {
+                                                        const isGroupItemActive = sub.subItems.some((child: any) => pathname.startsWith(child.href));
+                                                        return (
+                                                            <div key={sub.name} className="mt-2 mb-1">
+                                                                <div className={`text-[10px] font-bold uppercase tracking-widest px-3 mb-1.5 ${isGroupItemActive ? 'text-blue-600' : 'text-slate-400'}`}>
+                                                                    {sub.name}
+                                                                </div>
+                                                                <div className="space-y-1 pl-1">
+                                                                    {sub.subItems.map((child: any) => {
+                                                                        const isChildActive = pathname === child.href;
+                                                                        return (
+                                                                            <Link
+                                                                                key={child.href}
+                                                                                href={child.href}
+                                                                                className={`group relative flex items-center px-3 py-1.5 text-[13px] rounded-lg border transition-all duration-300 ${isChildActive
+                                                                                    ? 'text-blue-700 font-medium border-blue-50 bg-blue-50/50'
+                                                                                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/90 hover:border-slate-200'
+                                                                                    }`}
+                                                                            >
+                                                                                <span className="relative z-10">{child.name}</span>
+                                                                            </Link>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+
                                                     const isSubActive = pathname === sub.href;
 
                                                     return (
                                                         <Link
                                                             key={sub.href}
                                                             href={sub.href}
-                                                            className={`group relative flex items-center px-3 py-2 text-sm rounded-lg border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                                                isSubActive
-                                                                    ? 'text-blue-700 font-semibold border-blue-100'
-                                                                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/90 hover:border-slate-200'
-                                                            }`}
+                                                            className={`group relative flex items-center px-3 py-2 text-sm rounded-lg border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isSubActive
+                                                                ? 'text-blue-700 font-semibold border-blue-100'
+                                                                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/90 hover:border-slate-200'
+                                                                }`}
                                                         >
                                                             {isSubActive && (
                                                                 <>
@@ -199,11 +233,10 @@ export function Sidebar() {
                             <Link
                                 key={item.name}
                                 href={item.href!}
-                                className={`group relative flex items-center px-4 py-3 rounded-xl border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden ${
-                                    isActiveExact
-                                        ? 'text-blue-700 font-semibold border-blue-100'
-                                        : 'border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200'
-                                }`}
+                                className={`group relative flex items-center px-4 py-3 rounded-xl border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden ${isActiveExact
+                                    ? 'text-blue-700 font-semibold border-blue-100'
+                                    : 'border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200'
+                                    }`}
                             >
                                 {isActiveExact && (
                                     <>
@@ -220,9 +253,8 @@ export function Sidebar() {
                                     </>
                                 )}
                                 <Icon
-                                    className={`w-5 h-5 mr-3 relative z-10 transition-colors duration-300 ${
-                                        isActiveExact ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
-                                    }`}
+                                    className={`w-5 h-5 mr-3 relative z-10 transition-colors duration-300 ${isActiveExact ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
+                                        }`}
                                 />
                                 <span className="relative z-10">{item.name}</span>
                             </Link>

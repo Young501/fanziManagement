@@ -48,15 +48,17 @@ export default async function Home() {
   const monthEnd = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
   // 2. Get current month's new customers count
+  const actualMonthStart = monthStart < '2026-03-10' ? '2026-03-10' : monthStart;
   const { count: thisMonthNewCustomers } = await supabase
     .from('customers')
     .select('*', { count: 'exact', head: true })
-    .gte('created_at', monthStart);
+    .gte('created_at', actualMonthStart);
 
   // Get most recent 5 customers for the widget list
   const { data: recentNewCustomers } = await supabase
     .from('customers')
     .select('id, company_name, created_at, contact_person')
+    .gte('created_at', '2026-03-10')
     .order('created_at', { ascending: false })
     .limit(5);
 

@@ -59,6 +59,10 @@ export async function GET(request: NextRequest) {
                     contact_person,
                     contact_info,
                     service_manager
+                ),
+                payment_records (
+                    paid_at,
+                    paid_amount
                 )
             `);
 
@@ -66,50 +70,56 @@ export async function GET(request: NextRequest) {
             query = query.ilike('customers.company_name', `%${search}%`);
         }
 
-        const { data: allData, error } = await query.order('payment_due_date', { ascending: true });
+        const { data: allData, error } = await query.order('payment_due_date', { ascending: false });
 
         if (error) {
             console.error('[finance customers API] error:', error);
             return noStoreJson({ error: error.message }, 500);
         }
 
-        let filteredData = allData || [];
-
-        // Fetch payment records to calculate true paid amount
-        const recIds = filteredData.map(r => r.id);
-        const { data: allPayments } = await supabase
-            .from('payment_records')
-            .select('receivable_id, paid_amount')
-            .in('receivable_id', recIds);
-
-        const paymentMap: Record<string, number> = {};
-        allPayments?.forEach(p => {
-            paymentMap[p.receivable_id] = (paymentMap[p.receivable_id] || 0) + Number(p.paid_amount || 0);
-        });
-
-        // Map and apply status filter
-        const now = Date.now();
-        filteredData = filteredData.map((item: any) => {
-            const sumPaid = paymentMap[item.id] || 0;
-            const status = String(item.status || 'unpaid').toLowerCase();
-            const isActuallyPaid = status === 'paid';
-            const isPending = status === 'pending';
-
-            // Requirement: 
-            // 1. If paid but no record, default to payable amount
-            // 2. If PENDING (renewed), show the LAST RECEIPT amount so it doesn't look empty
-            let effectivePaid = sumPaid;
-            if (isActuallyPaid) {
-                effectivePaid = sumPaid > 0 ? sumPaid : Number(item.amount_payable_period || 0);
-            } else if (isPending && sumPaid === 0) {
-                effectivePaid = Number(item.current_receipt_amount || 0);
+        // Logic fix: Only show the LATEST company_receivables per customer
+        const latestMap = new Map<string, any>();
+        for (const item of allData || []) {
+            const cid = item.customer_id;
+            if (!cid) continue;
+            // Since we ordered by payment_due_date desc, the first one we see is the "latest" (future ones first, or current if no future)
+            // Wait, usually the latest is the one with the furthest due date.
+            if (!latestMap.has(cid)) {
+                latestMap.set(cid, item);
+            } else {
+                // If we already have one, check if this one is "later"
+                const existing = latestMap.get(cid);
+                const currentDue = new Date(item.payment_due_date).getTime();
+                const existingDue = new Date(existing.payment_due_date).getTime();
+                if (currentDue > existingDue) {
+                    latestMap.set(cid, item);
+                }
             }
+        }
 
+        let filteredData = Array.from(latestMap.values());
+
+        // Ensure current_receipt_date/amount are populated from payment_records if missing
+        filteredData = filteredData.map((item: any) => {
+            if (!item.current_receipt_date && item.payment_records && item.payment_records.length > 0) {
+                // Sort by paid_at desc to get the latest
+                const latest = [...item.payment_records].sort((a, b) => new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime())[0];
+                return {
+                    ...item,
+                    current_receipt_date: latest.paid_at,
+                    current_receipt_amount: latest.paid_amount,
+                    // Keep payment_records small or remove it from the final response
+                    payment_records: undefined
+                };
+            }
             return {
                 ...item,
-                amount_paid_period: effectivePaid
+                payment_records: undefined
             };
         });
+
+        // Apply status filter
+        const now = Date.now();
 
         if (statusFilter) {
             filteredData = filteredData.filter((item: any) => {
@@ -118,26 +128,21 @@ export async function GET(request: NextRequest) {
                 const dueDateTs = item.payment_due_date ? new Date(item.payment_due_date).getTime() : 0;
                 const isOverdue = dueDateTs < nowTs;
 
-                // Logic: 
-                // A "Paid" record within 45 days of its next due date is virtually "Unpaid" for collection.
-                const isWithin45Days = dueDateTs > 0 && (dueDateTs - nowTs) <= (45 * 24 * 60 * 60 * 1000);
-                const isVirtuallyUnpaid = (status === 'paid' || status === 'pending') && isWithin45Days;
+                // Requirement: Abolish the 45-day virtual unpaid logic.
+                // We now trust the 'status' and 'payment_due_date' of the latest record.
 
                 if (statusFilter === 'paid') {
-                    // Only show truly paid records that are NOT within 45 days of next due date
-                    return (status === 'paid' || status === 'pending') && !isWithin45Days;
+                    return (status === 'paid' || status === 'pending');
                 }
 
                 if (statusFilter === 'overdue') {
-                    // Overdue still means truly unpaid and past due date
                     return status !== 'paid' && status !== 'pending' && isOverdue;
                 }
 
                 // Filtering for 'unpaid'
                 if (statusFilter === 'unpaid') {
-                    // Include truly unpaid (not overdue) OR virtually unpaid (paid but soon expires)
-                    const isTrulyUnpaidNotOverdue = status !== 'paid' && status !== 'pending' && !isOverdue;
-                    return isTrulyUnpaidNotOverdue || isVirtuallyUnpaid;
+                    // Just truly unpaid and NOT overdue
+                    return status !== 'paid' && status !== 'pending' && !isOverdue;
                 }
 
                 return true;

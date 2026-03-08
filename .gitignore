@@ -51,3 +51,7 @@ test_schema.js
 *schema*.sql
 dump*.json
 dump*.sql
+
+# Ignore agent directory
+/agent/
+

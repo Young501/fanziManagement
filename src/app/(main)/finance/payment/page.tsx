@@ -85,7 +85,7 @@ const RENEWAL_FIELD_LABELS: Record<keyof RenewalFields, string> = {
     payment_due_date: '下次收款日',
     pay_cycle_months: '付款周期(月)',
     billing_fee_month: '月收费金额',
-    amount_payable_period: '本期应收金额',
+    amount_payable_period: '下期应收金额',
     standard_price: '标准价格',
     discount_gap: '优惠差额',
 };
@@ -240,7 +240,7 @@ function PaymentEntryContent() {
         return changed;
     }, [renewal, selectedReceivable]);
 
-    const renewalValid = changedFields.every(f => !!changeReasons[f]?.trim());
+    const renewalValid = changedFields.every(f => f === 'amount_payable_period' || !!changeReasons[f]?.trim());
     const updateRenewal = <K extends keyof RenewalFields>(key: K, val: RenewalFields[K]) => {
         if (!renewal) return;
         const next = { ...renewal, [key]: val };
@@ -1055,7 +1055,7 @@ function PaymentEntryContent() {
                                 {!renewalValid && changedFields.length > 0 && (
                                     <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
                                         <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                        <span>以下字段有变更，请填写变更原因：{changedFields.filter(f => !changeReasons[f]).map(f => RENEWAL_FIELD_LABELS[f]).join('、')}</span>
+                                        <span>以下字段有变更，请填写变更原因：{changedFields.filter(f => f !== 'amount_payable_period' && !changeReasons[f]).map(f => RENEWAL_FIELD_LABELS[f]).join('、')}</span>
                                     </div>
                                 )}
                             </div>
