@@ -66,7 +66,7 @@ export async function PATCH(
         }
 
         const negotiatedAmount = hasNegotiatedAmount ? Number(body.negotiated_payable_amount) : null;
-        if (hasNegotiatedAmount && (!Number.isFinite(negotiatedAmount) || negotiatedAmount < 0)) {
+        if (hasNegotiatedAmount && negotiatedAmount !== null && (!Number.isFinite(negotiatedAmount) || negotiatedAmount < 0)) {
             return noStoreJson({ error: 'Invalid negotiated payable amount' }, 400);
         }
 
