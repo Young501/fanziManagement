@@ -65,15 +65,17 @@ export async function GET(request: NextRequest) {
                     contract_end_date,
                     receipt_note
                 ),
-                customers (
+                customers!inner (
                     id,
                     company_name,
                     contact_person,
                     contact_info,
-                    service_manager
+                    service_manager,
+                    customer_status
                 )
             `)
-            .in('status', ['open', 'in_progress', 'promised']);
+            .in('status', ['open', 'in_progress', 'promised'])
+            .neq('customers.customer_status', '流失');
 
         if (error) {
             console.error('[collection-tasks GET] error:', error);

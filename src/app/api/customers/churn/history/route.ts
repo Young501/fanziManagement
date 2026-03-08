@@ -25,12 +25,12 @@ async function getRole() {
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await createServerClient();
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page') || '1');
         const limit = parseInt(searchParams.get('limit') || '20');
         const start = (page - 1) * limit;
 
+        const supabase = createAdminClient();
         const { data, count, error } = await supabase
             .from('customer_churn_logs')
             .select('*, customers(company_name)', { count: 'exact' })
@@ -43,7 +43,13 @@ export async function GET(request: NextRequest) {
 
         const role = await getRole();
 
-        return NextResponse.json({ data, count, role });
+        // 扁平化数据，将 customers.company_name 提升到顶层
+        const flattenedData = data?.map((item: any) => ({
+            ...item,
+            company_name: item.customers?.company_name || '未知客户'
+        })) || [];
+
+        return NextResponse.json({ data: flattenedData, count, role });
     } catch (err: any) {
         return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
     }

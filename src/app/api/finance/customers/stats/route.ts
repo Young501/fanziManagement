@@ -21,10 +21,20 @@ export async function GET(_request: NextRequest) {
         const now = new Date();
         const currentYear = now.getFullYear();
 
-        // Query all relevant receivables
+        // Query all relevant receivables for active customers only
         const { data: receivables, error: recErr } = await supabase
             .from('company_receivables')
-            .select('amount_payable_period, amount_paid_period, status, payment_due_date, customer_id');
+            .select(`
+                amount_payable_period, 
+                amount_paid_period, 
+                status, 
+                payment_due_date, 
+                customer_id,
+                customers!inner (
+                    customer_status
+                )
+            `)
+            .neq('customers.customer_status', '流失');
 
         if (recErr) {
             console.error('[finance customers stats API] receivables error:', recErr);

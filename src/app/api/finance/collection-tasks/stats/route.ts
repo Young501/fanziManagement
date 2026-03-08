@@ -37,9 +37,13 @@ export async function GET() {
                     payment_due_date,
                     amount_payable_period,
                     amount_paid_period
+                ),
+                customers!inner (
+                    customer_status
                 )
             `)
-            .in('status', ['open', 'in_progress', 'promised']);
+            .in('status', ['open', 'in_progress', 'promised'])
+            .neq('customers.customer_status', '流失');
 
         if (error) {
             console.error('[collection-tasks/stats] error:', error);

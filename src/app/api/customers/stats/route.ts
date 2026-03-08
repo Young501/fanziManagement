@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 function createAdminClient() {
     return createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,46 +11,88 @@ function createAdminClient() {
     );
 }
 
+function noStoreJson(body: unknown, status = 200) {
+    return NextResponse.json(body, {
+        status,
+        headers: { 'Cache-Control': 'no-store' },
+    });
+}
+
 export async function GET() {
     try {
         const supabase = createAdminClient();
 
-        // 1. Get total customers
+        // 1. Get total customers (excluding churned)
         const { count: totalCustomers, error: totalError } = await supabase
             .from('customers')
-            .select('*', { count: 'exact', head: true });
+            .select('*', { count: 'exact', head: true })
+            .neq('customer_status', '流失');
 
         if (totalError) throw totalError;
 
-        // 2. Get current month's and last month's customers dynamically
+        // 2. Dates setup (use local time strings)
         const now = new Date();
-        const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-        // 0th day of current month gets last day of previous month
-        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).toISOString();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const thisMonthStartRaw = `${year}-${month}-01`;
+        const thisMonthStart = thisMonthStartRaw < '2026-03-10' ? '2026-03-10' : thisMonthStartRaw;
 
-        const { count: thisMonthCount } = await supabase
+        const lastDayThisMonth = new Date(year, now.getMonth() + 1, 0);
+        const thisMonthEnd = `${year}-${month}-${String(lastDayThisMonth.getDate()).padStart(2, '0')}`;
+
+        const lastMonthDate = new Date(year, now.getMonth() - 1, 1);
+        const lastMonthY = lastMonthDate.getFullYear();
+        const lastMonthM = String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+        const lastMonthStartRaw = `${lastMonthY}-${lastMonthM}-01`;
+        const lastMonthStart = lastMonthStartRaw < '2026-03-10' ? '2026-03-10' : lastMonthStartRaw;
+
+        const lastDayLastMonth = new Date(year, now.getMonth(), 0);
+        const lastMonthEnd = `${lastMonthY}-${lastMonthM}-${String(lastDayLastMonth.getDate()).padStart(2, '0')}`;
+
+        // 3. Get New Customers
+        const { count: thisMonthNew } = await supabase
             .from('customers')
             .select('*', { count: 'exact', head: true })
-            .gte('created_at', thisMonthStart);
+            .gte('created_at', thisMonthStart)
+            .lte('created_at', thisMonthEnd)
+            .neq('customer_status', '流失');
 
-        const { count: lastMonthCount } = await supabase
+        const { count: lastMonthNew } = await supabase
             .from('customers')
             .select('*', { count: 'exact', head: true })
             .gte('created_at', lastMonthStart)
-            .lte('created_at', lastMonthEnd);
+            .lte('created_at', lastMonthEnd)
+            .neq('customer_status', '流失');
 
-        // The change compared to last month
-        const monthlyChange = (thisMonthCount || 0) - (lastMonthCount || 0);
+        // 4. Get Churned Customers from logs (use Raw start dates to get ALL churns in the month)
+        const { count: thisMonthChurned } = await supabase
+            .from('customer_churn_logs')
+            .select('*', { count: 'exact', head: true })
+            .gte('churn_date', thisMonthStartRaw)
+            .lte('churn_date', thisMonthEnd);
 
-        return NextResponse.json({
+        const { count: lastMonthChurned } = await supabase
+            .from('customer_churn_logs')
+            .select('*', { count: 'exact', head: true })
+            .gte('churn_date', lastMonthStartRaw)
+            .lte('churn_date', lastMonthEnd);
+
+        // 5. Calculate net change
+        // thisMonthCount = (Actual new this month) - (Actual churned this month)
+        const thisMonthNet = (thisMonthNew || 0) - (thisMonthChurned || 0);
+        const lastMonthNet = (lastMonthNew || 0) - (lastMonthChurned || 0);
+
+        // monthlyChange is the difference in net performance
+        const monthlyChange = thisMonthNet - lastMonthNet;
+
+        return noStoreJson({
             totalCustomers: totalCustomers || 0,
-            thisMonthCount: thisMonthCount || 0,
-            lastMonthCount: lastMonthCount || 0,
+            thisMonthCount: thisMonthNet,
+            lastMonthCount: lastMonthNet,
             monthlyChange,
         });
     } catch (err: any) {
         console.error('[customers stats API] error:', err);
-        return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 });
+        return noStoreJson({ error: err?.message ?? 'Internal server error' }, 500);
     }
 }

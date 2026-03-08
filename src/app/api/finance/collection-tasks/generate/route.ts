@@ -44,9 +44,13 @@ export async function POST() {
                 customer_id,
                 payment_due_date,
                 amount_payable_period,
-                amount_paid_period
+                amount_paid_period,
+                customers!inner (
+                    customer_status
+                )
             `)
-            .or(`payment_due_date.lt.${todayStr},and(payment_due_date.gte.${monthStart},payment_due_date.lte.${monthEnd})`);
+            .or(`payment_due_date.lt.${todayStr},and(payment_due_date.gte.${monthStart},payment_due_date.lte.${monthEnd})`)
+            .neq('customers.customer_status', '流失');
 
         if (recError) {
             return noStoreJson({ error: recError.message }, 500);

@@ -12,6 +12,7 @@ export default function ChurnRegistrationPage({ params }: { params: Promise<{ id
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showSuccess, setShowSuccess] = useState(false);
 
     // Form State
     const [churnReason, setChurnReason] = useState('');
@@ -62,8 +63,12 @@ export default function ChurnRegistrationPage({ params }: { params: Promise<{ id
                 throw new Error(data.error || '登记失败');
             }
 
-            // Return to customer list upon successful churn logging
-            router.push('/customers');
+            setShowSuccess(true);
+            setTimeout(() => {
+                setShowSuccess(false);
+                // Return to churn center upon successful churn logging
+                router.push('/customers/churn');
+            }, 3000);
         } catch (err: any) {
             setError(err.message);
             setSubmitting(false);
@@ -107,7 +112,20 @@ export default function ChurnRegistrationPage({ params }: { params: Promise<{ id
                 </div>
             </header>
 
-            <main className="flex-1 overflow-auto p-6">
+            <main className="flex-1 overflow-auto p-6 relative">
+                {showSuccess && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-50/80 backdrop-blur-sm transition-all duration-500">
+                        <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800">流失登记成功</h3>
+                            <p className="text-slate-500 mt-1">记录已成功存档，正在跳转到流失列表...</p>
+                        </div>
+                    </div>
+                )}
                 <div className="max-w-3xl mx-auto">
                     {error && (
                         <div className="mb-6 bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 text-sm flex items-center justify-between">

@@ -40,10 +40,15 @@ export async function GET(request: NextRequest) {
         const search = sanitizeSearch(searchParams.get('search'));
         const serviceManager = sanitizeSearch(searchParams.get('service_manager'));
 
+        const includeChurned = searchParams.get('include_churned') === 'true';
         const offset = (page - 1) * limit;
         const supabase = createAdminClient();
 
         let query = supabase.from('customers').select('*', { count: 'exact' });
+
+        if (!includeChurned) {
+            query = query.neq('customer_status', '流失');
+        }
 
         if (search) {
             query = query.or(`company_name.ilike.%${search}%,contact_person.ilike.%${search}%`);

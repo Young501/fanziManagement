@@ -318,7 +318,7 @@ export default function CustomersPage() {
                         <Users className="w-6 h-6 text-indigo-600" />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-slate-500">本月新增客户</p>
+                        <p className="text-sm font-medium text-slate-500">本月客户变化</p>
                         <div className="flex items-baseline gap-2 mt-1">
                             {statsLoading ? (
                                 <div className="h-8 w-16 bg-slate-100 animate-pulse rounded"></div>
