@@ -25,29 +25,76 @@ async function getRole() {
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await createServerClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const supabaseAuth = await createServerClient();
+        const { data: { user } } = await supabaseAuth.auth.getUser();
         if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
+
+        const supabaseAdmin = createAdminClient();
 
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page') || '1');
         const limit = parseInt(searchParams.get('limit') || '20');
         const start = (page - 1) * limit;
+        const month = searchParams.get('month') || ''; // format: YYYY-MM
+        const paymentType = searchParams.get('paymentType') || ''; // 'regular' | 'adhoc'
 
-        const { data, count, error } = await supabase
+        // Build base query (paginated)
+        let query = supabaseAdmin
             .from('payment_records')
             .select('*, customers(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note)', { count: 'exact' })
             .order('paid_at', { ascending: false })
-            .order('created_at', { ascending: false })
-            .range(start, start + limit - 1);
+            .order('created_at', { ascending: false });
+
+        // Apply month filter (paid_at is a date string)
+        if (month) {
+            const [year, mon] = month.split('-');
+            const startDate = `${year}-${mon}-01`;
+            const endYear = mon === '12' ? parseInt(year) + 1 : parseInt(year);
+            const endMon = mon === '12' ? '01' : String(parseInt(mon) + 1).padStart(2, '0');
+            const endDate = `${endYear}-${endMon}-01`;
+            query = query.gte('paid_at', startDate).lt('paid_at', endDate);
+        }
+
+        // Apply payment type filter
+        // 'regular' = has a receivable_id (linked to company_receivables)
+        // 'adhoc'   = receivable_id is null
+        if (paymentType === 'regular') {
+            query = query.not('receivable_id', 'is', null);
+        } else if (paymentType === 'adhoc') {
+            query = query.is('receivable_id', null);
+        }
+
+        const { data, count, error } = await query.range(start, start + limit - 1);
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
+        // Compute total sum for the filtered dataset (no pagination)
+        let totalQuery = supabaseAdmin
+            .from('payment_records')
+            .select('paid_amount');
+
+        if (month) {
+            const [year, mon] = month.split('-');
+            const startDate = `${year}-${mon}-01`;
+            const endYear = mon === '12' ? parseInt(year) + 1 : parseInt(year);
+            const endMon = mon === '12' ? '01' : String(parseInt(mon) + 1).padStart(2, '0');
+            const endDate = `${endYear}-${endMon}-01`;
+            totalQuery = totalQuery.gte('paid_at', startDate).lt('paid_at', endDate);
+        }
+        if (paymentType === 'regular') {
+            totalQuery = totalQuery.not('receivable_id', 'is', null);
+        } else if (paymentType === 'adhoc') {
+            totalQuery = totalQuery.is('receivable_id', null);
+        }
+
+        const { data: totalData } = await totalQuery;
+        const total = (totalData || []).reduce((sum, r) => sum + (r.paid_amount || 0), 0);
+
         const role = await getRole();
 
-        return NextResponse.json({ data, count, role });
+        return NextResponse.json({ data, count, role, total });
     } catch (err: any) {
         return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
     }
@@ -73,13 +120,7 @@ export async function DELETE(request: NextRequest) {
 
         const supabase = createAdminClient();
 
-        // Optional: We might want to revert the amount_paid_period in company_receivables if we delete a payment record.
-        // But the user only asked for "删除记录" (delete record). Usually deleting a payment record should revert the status.
-        // For simplicity, I'll just delete the record as requested. If the user wants full reconciliation logic they would have specified it.
-        // However, it's safer to at least mention this or do a basic revert.
-        // In this system, company_receivables stores the cumulative amount_paid_period.
-
-        // Let's fetch the record first to know how much to revert.
+        // Fetch the record first to revert receivable amount if applicable
         const { data: record } = await supabase.from('payment_records').select('*').eq('id', id).single();
         if (record) {
             const { data: receivable } = await supabase.from('company_receivables').select('amount_paid_period').eq('id', record.receivable_id).single();

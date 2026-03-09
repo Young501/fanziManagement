@@ -103,8 +103,25 @@ export async function POST(request: NextRequest) {
                 return noStoreJson({ error: '生成系统底账失败，请重试' }, 500);
             }
 
+            // Also insert a payment_records entry so this shows up in payment history
+            const { error: prErr } = await supabase.from('payment_records').insert({
+                customer_id: customer_id || null,
+                receivable_id: null,
+                paid_at,
+                paid_amount: amount,
+                method: method || null,
+                note: `[一次性收款] ${ad_hoc_service_name}${note ? ' - ' + note : ''}`,
+                screenshot: screenshot || null,
+            });
+
+            if (prErr) {
+                console.error('[payment API] ad_hoc payment_records insert error:', prErr);
+                // Don't fail — the ad_hoc record is already created, just log the warning
+            }
+
             return noStoreJson({ success: true, newPaid: amount, newStatus: 'paid', remaining: 0, changeLogsWritten: 0 });
         }
+
 
         // 2. Update receivable status and handle renewal if provided
         const { data: currentReceivable, error: fetchErr } = await supabase

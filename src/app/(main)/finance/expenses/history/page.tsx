@@ -1,40 +1,61 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { History, Trash2, ArrowLeft, Loader2, AlertCircle, ImageIcon, ExternalLink, X } from 'lucide-react';
+import { History, Trash2, ArrowLeft, Loader2, AlertCircle, ImageIcon, ExternalLink, X, TrendingDown, Filter } from 'lucide-react';
+
+const EXPENSE_CATEGORIES = ['办公费', '交通费', '社保公积金', '工资', '税费', '外包服务费', '其他'];
 
 export default function ExpenseHistoryPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any[]>([]);
     const [count, setCount] = useState(0);
+    const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [role, setRole] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+    // Filters
+    const [selectedMonth, setSelectedMonth] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('');
+
     const limit = 20;
 
-    useEffect(() => {
-        fetchData();
-    }, [page]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/finance/expenses/history?page=${page}&limit=${limit}`);
+            const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+            if (selectedMonth) params.set('month', selectedMonth);
+            if (selectedCategory) params.set('category', selectedCategory);
+            const res = await fetch(`/api/finance/expenses/history?${params.toString()}`);
             const json = await res.json();
             if (json.error) throw new Error(json.error);
             setData(json.data || []);
             setCount(json.count || 0);
+            setTotal(json.total || 0);
             setRole(json.role);
         } catch (err: any) {
             setError(err.message);
         } finally {
             setLoading(false);
         }
+    }, [page, selectedMonth, selectedCategory]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    // Reset to page 1 when filters change
+    const handleMonthChange = (val: string) => {
+        setSelectedMonth(val);
+        setPage(1);
+    };
+    const handleCategoryChange = (val: string) => {
+        setSelectedCategory(val === selectedCategory ? '' : val);
+        setPage(1);
     };
 
     const handleDelete = async (id: string) => {
@@ -50,6 +71,10 @@ export default function ExpenseHistoryPage() {
 
             setData(prev => prev.filter(item => item.id !== id));
             setCount(prev => prev - 1);
+            setTotal(prev => {
+                const deleted = data.find(d => d.id === id);
+                return prev - (deleted?.expense_amount || 0);
+            });
         } catch (err: any) {
             alert(err.message);
         } finally {
@@ -74,6 +99,7 @@ export default function ExpenseHistoryPage() {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <button
@@ -99,6 +125,74 @@ export default function ExpenseHistoryPage() {
                 </div>
             )}
 
+            {/* Summary Card */}
+            <div className="bg-gradient-to-br from-violet-600 to-violet-700 rounded-2xl p-5 text-white shadow-md">
+                <div className="flex items-center gap-2 mb-1">
+                    <TrendingDown className="w-5 h-5 text-violet-200" />
+                    <span className="text-sm text-violet-200 font-medium">
+                        {selectedMonth ? `${selectedMonth} 总支出` : '全部总支出'}
+                        {selectedCategory ? ` · ${selectedCategory}` : ''}
+                    </span>
+                </div>
+                <div className="text-3xl font-bold tracking-tight">
+                    {loading ? <span className="opacity-50 text-xl">计算中...</span> : formatCurrency(total)}
+                </div>
+                <div className="mt-1 text-violet-200 text-xs">共 {count} 条记录</div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                    <Filter className="w-4 h-4" />
+                    筛选
+                </div>
+                <div className="flex flex-wrap gap-4 items-center">
+                    {/* Month picker */}
+                    <div className="flex items-center gap-2">
+                        <label className="text-sm text-slate-500 whitespace-nowrap">按月份</label>
+                        <input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={e => handleMonthChange(e.target.value)}
+                            className="rounded-xl border border-slate-200 py-1.5 px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 transition-colors"
+                        />
+                        {selectedMonth && (
+                            <button
+                                onClick={() => handleMonthChange('')}
+                                className="text-xs text-slate-400 hover:text-slate-600 underline"
+                            >
+                                清除
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Category filter pills */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-slate-500 whitespace-nowrap">费用类别</span>
+                        <button
+                            onClick={() => { setSelectedCategory(''); setPage(1); }}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${selectedCategory === '' ? 'bg-violet-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        >
+                            全部
+                        </button>
+                        {EXPENSE_CATEGORIES.map(cat => {
+                            const color = categoryColors[cat] || categoryColors['其他'];
+                            const isActive = selectedCategory === cat;
+                            return (
+                                <button
+                                    key={cat}
+                                    onClick={() => handleCategoryChange(cat)}
+                                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${isActive ? `${color.bg} ${color.text} ring-2 ring-offset-1 ring-current shadow-sm` : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    {cat}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+
+            {/* Table */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
@@ -126,7 +220,7 @@ export default function ExpenseHistoryPage() {
                             ) : data.length === 0 ? (
                                 <tr>
                                     <td colSpan={9} className="py-20 text-center text-slate-500">
-                                        暂无成本记录
+                                        {selectedMonth || selectedCategory ? '当前筛选条件下暂无记录' : '暂无成本记录'}
                                     </td>
                                 </tr>
                             ) : (

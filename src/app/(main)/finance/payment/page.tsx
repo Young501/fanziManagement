@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import {
     Search, CheckCircle2, AlertCircle, Wallet, TrendingDown, ChevronRight, ChevronDown,
     X, CreditCard, Calendar, Banknote, FileText, Loader2, CircleDot,
-    ImagePlus, Image as ImageIcon, Trash2, RefreshCw, Edit2
+    ImagePlus, Image as ImageIcon, Trash2, RefreshCw, Edit2, TrendingUp, Filter
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { MaskedContact } from '@/components/ui/MaskedContact';
@@ -1340,7 +1340,10 @@ function PaymentHistoryContent() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any[]>([]);
     const [count, setCount] = useState(0);
+    const [totalAmount, setTotalAmount] = useState(0);
     const [page, setPage] = useState(1);
+    const [selectedMonth, setSelectedMonth] = useState('');
+    const [selectedType, setSelectedType] = useState('全部'); // 全部, regular, adhoc
     const [role, setRole] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
@@ -1361,16 +1364,22 @@ function PaymentHistoryContent() {
 
     useEffect(() => {
         fetchData();
-    }, [page]);
+    }, [page, selectedMonth, selectedType]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/finance/payment/history?page=${page}&limit=${limit}`);
+            let url = `/api/finance/payment/history?page=${page}&limit=${limit}`;
+            if (selectedMonth) url += `&month=${selectedMonth}`;
+            if (selectedType === 'regular') url += `&paymentType=regular`;
+            if (selectedType === 'adhoc') url += `&paymentType=adhoc`;
+
+            const res = await fetch(url);
             const json = await res.json();
             if (json.error) throw new Error(json.error);
             setData(json.data || []);
             setCount(json.count || 0);
+            setTotalAmount(json.total || 0);
             setRole(json.role);
         } catch (err: any) {
             setError(err.message);
@@ -1388,6 +1397,9 @@ function PaymentHistoryContent() {
             if (json.error) throw new Error(json.error);
             setData(prev => prev.filter(item => item.id !== id));
             setCount(prev => prev - 1);
+            // Update total locally
+            const deleted = data.find(d => d.id === id);
+            if (deleted) setTotalAmount(prev => prev - (deleted.paid_amount || 0));
         } catch (err: any) {
             alert(err.message);
         } finally {
@@ -1439,6 +1451,7 @@ function PaymentHistoryContent() {
                 return item;
             }));
             setEditRecord(null);
+            fetchData(); // Full refresh to update totals if amount changed
         } catch (err: any) {
             alert(err.message);
         } finally {
@@ -1447,7 +1460,72 @@ function PaymentHistoryContent() {
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
+            {/* Summary Card and Filter Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Total Income card */}
+                <div className="md:col-span-1 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-5 text-white shadow-lg shadow-emerald-100 flex flex-col justify-between">
+                    <div className="flex items-center justify-between opacity-80">
+                        <span className="text-sm font-medium">总收入</span>
+                        <TrendingUp className="w-5 h-5" />
+                    </div>
+                    <div className="mt-2">
+                        <div className="text-2xl font-bold font-mono">
+                            {formatCurrency(totalAmount)}
+                        </div>
+                        <div className="text-xs opacity-70 mt-1">
+                            共 {count} 条记录
+                        </div>
+                    </div>
+                </div>
+
+                {/* Filter bar */}
+                <div className="md:col-span-3 bg-white rounded-2xl border border-slate-200 p-5 flex flex-col justify-center">
+                    <div className="flex flex-wrap items-center gap-4">
+                        {/* Month Picker */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">按月份</span>
+                            <input
+                                type="month"
+                                value={selectedMonth}
+                                onChange={(e) => {
+                                    setSelectedMonth(e.target.value);
+                                    setPage(1);
+                                }}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-600 outline-none"
+                            />
+                            {selectedMonth && (
+                                <button 
+                                    onClick={() => { setSelectedMonth(''); setPage(1); }}
+                                    className="text-xs text-slate-400 hover:text-red-500 underline"
+                                >
+                                    清除
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+                        {/* Type Filter */}
+                        <div className="flex items-center gap-2 flex-1">
+                            <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">收款类型</span>
+                            <select
+                                value={selectedType}
+                                onChange={(e) => {
+                                    setSelectedType(e.target.value);
+                                    setPage(1);
+                                }}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-600 outline-none bg-white min-w-[120px]"
+                            >
+                                <option value="全部">全部类型</option>
+                                <option value="regular">常规账单</option>
+                                <option value="adhoc">一次性收款</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {error && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-3">
                     <AlertCircle className="w-5 h-5" />

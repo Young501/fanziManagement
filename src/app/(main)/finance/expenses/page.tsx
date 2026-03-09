@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import {
     Search, CheckCircle2, X, Calendar, Banknote, FileText, Loader2,
     ImagePlus, Image as ImageIcon, Trash2, CreditCard, Tag, Building2, ClipboardList,
-    AlertCircle, ExternalLink, History
+    AlertCircle, ExternalLink, History, TrendingDown, Filter
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
@@ -67,7 +67,7 @@ function ExpenseEntryContent() {
     const [expenseCategory, setExpenseCategory] = useState('办公费');
     const [expenseType, setExpenseType] = useState('');
     const [vendorName, setVendorName] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState('转账');
+    const [paymentMethod, setPaymentMethod] = useState('微信支付');
     const [note, setNote] = useState('');
 
     const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -216,7 +216,7 @@ function ExpenseEntryContent() {
         setExpenseCategory('办公费');
         setExpenseType('');
         setVendorName('');
-        setPaymentMethod('转账');
+        setPaymentMethod('微信支付');
         setNote('');
         clearAttachment();
         setSubmitError(null);
@@ -479,7 +479,10 @@ function ExpenseHistoryContent() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any[]>([]);
     const [count, setCount] = useState(0);
+    const [totalAmount, setTotalAmount] = useState(0);
     const [page, setPage] = useState(1);
+    const [selectedMonth, setSelectedMonth] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('全部');
     const [role, setRole] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
@@ -487,16 +490,21 @@ function ExpenseHistoryContent() {
 
     const limit = 20;
 
-    useEffect(() => { fetchData(); }, [page]);
+    useEffect(() => { fetchData(); }, [page, selectedMonth, selectedCategory]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/finance/expenses/history?page=${page}&limit=${limit}`);
+            let url = `/api/finance/expenses/history?page=${page}&limit=${limit}`;
+            if (selectedMonth) url += `&month=${selectedMonth}`;
+            if (selectedCategory !== '全部') url += `&category=${encodeURIComponent(selectedCategory)}`;
+            
+            const res = await fetch(url);
             const json = await res.json();
             if (json.error) throw new Error(json.error);
             setData(json.data || []);
             setCount(json.count || 0);
+            setTotalAmount(json.total || 0);
             setRole(json.role);
         } catch (err: any) {
             setError(err.message);
@@ -514,6 +522,9 @@ function ExpenseHistoryContent() {
             if (json.error) throw new Error(json.error);
             setData(prev => prev.filter(item => item.id !== id));
             setCount(prev => prev - 1);
+            // Optionally update totalAmount if we have the amount of deleted record
+            const deleted = data.find(d => d.id === id);
+            if (deleted) setTotalAmount(prev => prev - (deleted.expense_amount || 0));
         } catch (err: any) {
             alert(err.message);
         } finally {
@@ -532,7 +543,73 @@ function ExpenseHistoryContent() {
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
+            {/* Summary Card and Filter Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Total Expense card */}
+                <div className="md:col-span-1 bg-gradient-to-br from-violet-600 to-purple-700 rounded-2xl p-5 text-white shadow-lg shadow-purple-100 flex flex-col justify-between">
+                    <div className="flex items-center justify-between opacity-80">
+                        <span className="text-sm font-medium">总支出</span>
+                        <TrendingDown className="w-5 h-5" />
+                    </div>
+                    <div className="mt-2">
+                        <div className="text-2xl font-bold font-mono">
+                            {formatCurrency(totalAmount)}
+                        </div>
+                        <div className="text-xs opacity-70 mt-1">
+                            共 {count} 条记录
+                        </div>
+                    </div>
+                </div>
+
+                {/* Filter bar */}
+                <div className="md:col-span-3 bg-white rounded-2xl border border-slate-200 p-5 flex flex-col justify-center">
+                    <div className="flex flex-wrap items-center gap-4">
+                        {/* Month Picker */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">按月份</span>
+                            <input
+                                type="month"
+                                value={selectedMonth}
+                                onChange={(e) => {
+                                    setSelectedMonth(e.target.value);
+                                    setPage(1);
+                                }}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-violet-600 outline-none"
+                            />
+                            {selectedMonth && (
+                                <button 
+                                    onClick={() => { setSelectedMonth(''); setPage(1); }}
+                                    className="text-xs text-slate-400 hover:text-red-500 underline"
+                                >
+                                    清除
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+                        {/* Category Filter */}
+                        <div className="flex items-center gap-2 flex-1">
+                            <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">费用类别</span>
+                            <select
+                                value={selectedCategory}
+                                onChange={(e) => {
+                                    setSelectedCategory(e.target.value);
+                                    setPage(1);
+                                }}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-violet-600 outline-none bg-white min-w-[120px]"
+                            >
+                                <option value="全部">全部类别</option>
+                                {EXPENSE_CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {error && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-3">
                     <AlertCircle className="w-5 h-5" />

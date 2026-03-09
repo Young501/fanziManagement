@@ -25,29 +25,70 @@ async function getRole() {
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await createServerClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const supabaseAuth = await createServerClient();
+        const { data: { user } } = await supabaseAuth.auth.getUser();
         if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
+
+        const supabaseAdmin = createAdminClient();
 
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page') || '1');
         const limit = parseInt(searchParams.get('limit') || '20');
         const start = (page - 1) * limit;
+        const month = searchParams.get('month') || ''; // format: YYYY-MM
+        const category = searchParams.get('category') || '';
 
-        const { data, count, error } = await supabase
+        // Build base query (paginated)
+        let query = supabaseAdmin
             .from('expense_records')
             .select('*, customers(company_name)', { count: 'exact' })
             .order('expense_date', { ascending: false })
-            .order('created_at', { ascending: false })
-            .range(start, start + limit - 1);
+            .order('created_at', { ascending: false });
+
+        // Apply month filter
+        if (month) {
+            const [year, mon] = month.split('-');
+            const startDate = `${year}-${mon}-01`;
+            const endYear = mon === '12' ? parseInt(year) + 1 : parseInt(year);
+            const endMon = mon === '12' ? '01' : String(parseInt(mon) + 1).padStart(2, '0');
+            const endDate = `${endYear}-${endMon}-01`;
+            query = query.gte('expense_date', startDate).lt('expense_date', endDate);
+        }
+
+        // Apply category filter
+        if (category) {
+            query = query.eq('expense_category', category);
+        }
+
+        const { data, count, error } = await query.range(start, start + limit - 1);
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
+        // Compute total sum for the filtered dataset (no pagination)
+        let totalQuery = supabaseAdmin
+            .from('expense_records')
+            .select('expense_amount');
+
+        if (month) {
+            const [year, mon] = month.split('-');
+            const startDate = `${year}-${mon}-01`;
+            const endYear = mon === '12' ? parseInt(year) + 1 : parseInt(year);
+            const endMon = mon === '12' ? '01' : String(parseInt(mon) + 1).padStart(2, '0');
+            const endDate = `${endYear}-${endMon}-01`;
+            totalQuery = totalQuery.gte('expense_date', startDate).lt('expense_date', endDate);
+        }
+        if (category) {
+            totalQuery = totalQuery.eq('expense_category', category);
+        }
+
+        const { data: totalData } = await totalQuery;
+        const total = (totalData || []).reduce((sum, r) => sum + (r.expense_amount || 0), 0);
+
         const role = await getRole();
 
-        return NextResponse.json({ data, count, role });
+        return NextResponse.json({ data, count, role, total });
     } catch (err: any) {
         return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
     }

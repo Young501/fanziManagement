@@ -1,5 +1,13 @@
 import { createClient as createServerClient } from '@/utils/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+
+function createAdminClient() {
+    return createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+}
 
 function noStoreJson(body: unknown, status = 200) {
     return new NextResponse(JSON.stringify(body), {
@@ -76,7 +84,9 @@ export async function POST(request: NextRequest) {
             created_by: user.id,
         };
 
-        const { data, error } = await supabase
+        const supabaseAdmin = createAdminClient();
+
+        const { data, error } = await supabaseAdmin
             .from('expense_records')
             .insert(record)
             .select()
