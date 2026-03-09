@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
             ad_hoc_service_name,
         } = body;
 
-        if (!customer_id) return noStoreJson({ error: '请选择客户' }, 400);
+        if (!is_ad_hoc && !customer_id) return noStoreJson({ error: '请选择客户' }, 400);
         if (!paid_at || !/^\d{4}-\d{2}-\d{2}$/.test(String(paid_at))) return noStoreJson({ error: '请填写正确收款日期' }, 400);
 
         const amount = Number(paid_amount);
@@ -83,40 +83,24 @@ export async function POST(request: NextRequest) {
         const supabase = createAdminClient();
 
         if (is_ad_hoc) {
-            const { data: newReceivable, error: recErr } = await supabase
-                .from('company_receivables')
+            const { data: newAdHoc, error: adHocErr } = await supabase
+                .from('customer_ad_hoc_services')
                 .insert({
-                    customer_id,
-                    amount_payable_period: amount,
-                    amount_paid_period: amount,
-                    payment_due_date: paid_at,
+                    customer_id: customer_id || null,
+                    service_name: ad_hoc_service_name,
+                    service_date: paid_at,
+                    amount_receivable: amount,
+                    amount_received: amount,
                     status: 'paid',
-                    receipt_note: ad_hoc_service_name,
-                    note: '一次性临时业务入账',
-                    current_receipt_date: paid_at,
-                    current_receipt_amount: amount,
+                    invoice_status: 'not_required',
+                    description: note || '一次性临时业务入账',
                 })
                 .select('id')
                 .single();
 
-            if (recErr || !newReceivable) {
-                console.error('[payment API] ad_hoc insert error:', recErr);
+            if (adHocErr || !newAdHoc) {
+                console.error('[payment API] ad_hoc insert error:', adHocErr);
                 return noStoreJson({ error: '生成系统底账失败，请重试' }, 500);
-            }
-
-            const { error: insertErr } = await supabase.from('payment_records').insert({
-                customer_id,
-                receivable_id: newReceivable.id,
-                paid_at,
-                paid_amount: amount,
-                method: method || null,
-                note: note || null,
-                screenshot: screenshot || null,
-            });
-
-            if (insertErr) {
-                console.error('[payment API] payment insert error:', insertErr);
-                return noStoreJson({ error: insertErr.message }, 500);
             }
 
             return noStoreJson({ success: true, newPaid: amount, newStatus: 'paid', remaining: 0, changeLogsWritten: 0 });

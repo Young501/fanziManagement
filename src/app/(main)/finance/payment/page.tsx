@@ -351,7 +351,7 @@ function PaymentEntryContent() {
     const discountValid = discountedPayable === (selectedReceivable?.amount_payable_period || 0) || !!discountReason.trim();
 
     const canSubmit = useMemo(() => {
-        if (!selectedCustomer) return false;
+        if (!isAdHoc && !selectedCustomer) return false;
         if (!paidAt) return false;
         if (amountNum <= 0) return false;
 
@@ -395,7 +395,7 @@ function PaymentEntryContent() {
             }
 
             const payload: any = {
-                customer_id: selectedCustomer!.id,
+                customer_id: selectedCustomer?.id || null,
                 paid_at: paidAt,
                 paid_amount: parseFloat(paidAmount),
                 method: method || null,
@@ -468,14 +468,28 @@ function PaymentEntryContent() {
 
             setSubmitSuccess(true);
             clearScreenshot();
-            const r2 = await fetch(`/api/finance/payment/receivables?customer_id=${selectedCustomer!.id}`);
-            const j2 = await r2.json();
-            const list: Receivable[] = j2.data || [];
-            setReceivables(list);
-            const updated = list.find(r => r.id === selectedReceivable!.id) || null;
-            setSelectedReceivable(updated);
+            
+            if (selectedCustomer) {
+                const r2 = await fetch(`/api/finance/payment/receivables?customer_id=${selectedCustomer.id}`);
+                const j2 = await r2.json();
+                const list: Receivable[] = j2.data || [];
+                setReceivables(list);
+                if (selectedReceivable) {
+                    const updated = list.find(r => r.id === selectedReceivable.id) || null;
+                    setSelectedReceivable(updated);
+                }
+            }
+            
             setPaidAmount('');
             setNote('');
+            
+            if (isAdHoc) {
+                setAdHocServiceName('');
+                if (!selectedCustomer) {
+                    // Optional: clear form for next generic ad_hoc
+                    setPaidAt(new Date().toISOString().split('T')[0]);
+                }
+            }
         } catch (e: any) {
             setSubmitError(e?.message || '提交失败，请重试');
         } finally {
@@ -490,11 +504,38 @@ function PaymentEntryContent() {
                 {/* LEFT: Customer + Form */}
                 <div className="lg:col-span-2 space-y-5">
 
+                    {/* Mode Toggle - More prominent when nothing is selected */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex gap-3">
+                        <button
+                            onClick={() => { setIsAdHoc(false); setSubmitError(null); }}
+                            className={`flex-1 flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all duration-200 ${!isAdHoc ? 'border-blue-600 bg-blue-50/50 text-blue-700 shadow-sm' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${!isAdHoc ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                <FileText className="w-5 h-5" />
+                            </div>
+                            <span className="font-bold text-sm">常规账单收款</span>
+                            <span className="text-xs mt-1 opacity-70">勾销系统中已有的月费、服务费账单</span>
+                        </button>
+                        <button
+                            onClick={() => { setIsAdHoc(true); setSelectedReceivable(null); setSubmitError(null); }}
+                            className={`flex-1 flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all duration-200 ${isAdHoc ? 'border-amber-500 bg-amber-50/50 text-amber-700 shadow-sm' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${isAdHoc ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                <CreditCard className="w-5 h-5" />
+                            </div>
+                            <span className="font-bold text-sm">一次性项目收款</span>
+                            <span className="text-xs mt-1 opacity-70">代办费、工本费等非周期临时业务入账</span>
+                        </button>
+                    </div>
+
                     {/* Step A: Customer Search */}
+                    {(!isAdHoc || isAdHoc) && (
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-visible">
                         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                             <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">A</div>
-                            <h2 className="text-sm font-semibold text-slate-800">选择客户</h2>
+                            <h2 className="text-sm font-semibold text-slate-800">
+                                选择客户 {isAdHoc && <span className="text-xs text-slate-400 font-normal ml-2">(选填)</span>}
+                            </h2>
                         </div>
                         <div className="p-5">
                             <div className="relative" ref={dropdownRef}>
@@ -572,27 +613,9 @@ function PaymentEntryContent() {
                         </div>
                     </div>
 
-                    {/* Mode Toggle */}
-                    {selectedCustomer && (
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex gap-2">
-                            <button
-                                onClick={() => { setIsAdHoc(false); setSubmitError(null); }}
-                                className={`flex-1 flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${!isAdHoc ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}
-                            >
-                                <span className="font-semibold text-sm">常规账单收款</span>
-                                <span className="text-xs mt-0.5 opacity-80">勾销已生成的财务应收</span>
-                            </button>
-                            <button
-                                onClick={() => { setIsAdHoc(true); setSelectedReceivable(null); setSubmitError(null); }}
-                                className={`flex-1 flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${isAdHoc ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}
-                            >
-                                <span className="font-semibold text-sm">一次性项目收款</span>
-                                <span className="text-xs mt-0.5 opacity-80">代办费、工本费等非周期临时入账</span>
-                            </button>
-                        </div>
                     )}
 
-                    {/* Step B: Receivable selection (Hidden if AdHoc) */}
+                    {/* Step B: Receivable selection (Restored) */}
                     {selectedCustomer && !isAdHoc && (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
@@ -669,8 +692,35 @@ function PaymentEntryContent() {
                         </div>
                     )}
 
+                    {/* Empty State / Hint when nothing is selected */}
+                    {!selectedCustomer && !isAdHoc && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center">
+                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Search className="w-8 h-8 text-slate-300" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-slate-800 mb-2">欢迎开始录入收款</h3>
+                            <p className="text-sm text-slate-500 max-w-sm mx-auto mb-8">
+                                请先在上方选择是“常规账单循环收款”还是“一次性项目临时收款”，然后按步骤完善信息。
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                                <button 
+                                    onClick={() => { /* stay in default or refocus search */ }}
+                                    className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Search className="w-4 h-4" /> 开始搜索客户
+                                </button>
+                                <button 
+                                    onClick={() => { setIsAdHoc(true); setSubmitError(null); }}
+                                    className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <CreditCard className="w-4 h-4 text-amber-500" /> 填报一次性项目
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Step C: Payment form */}
-                    {selectedCustomer && (isAdHoc || selectedReceivable) && (
+                    {(isAdHoc || selectedReceivable) && (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                                 <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold ${isAdHoc ? 'bg-amber-500' : 'bg-blue-600'}`}>C</div>
@@ -1215,7 +1265,7 @@ function PaymentEntryContent() {
             </div>
 
             {/* Confirmation Modal */}
-            {showConfirm && selectedCustomer && (
+            {showConfirm && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -1228,7 +1278,7 @@ function PaymentEntryContent() {
                             <div className="space-y-3">
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">客户名称</span>
-                                    <span className="font-semibold text-slate-900">{selectedCustomer.company_name}</span>
+                                    <span className="font-semibold text-slate-900">{selectedCustomer?.company_name || '个人/无'}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">收款日期</span>
