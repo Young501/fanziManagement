@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { History, Trash2, ArrowLeft, Loader2, AlertCircle, Banknote, ImageIcon, ExternalLink, X } from 'lucide-react';
+import { History, Trash2, ArrowLeft, Loader2, AlertCircle, Banknote, ImageIcon, ExternalLink, X, Edit2, FileText } from 'lucide-react';
+
+const PAYMENT_METHODS = ['转账', '微信支付', '支付宝', '现金', '银行汇款', '其他'];
 
 export default function PaymentHistoryPage() {
     const router = useRouter();
@@ -14,6 +16,17 @@ export default function PaymentHistoryPage() {
     const [error, setError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+    // Edit state
+    const [editRecord, setEditRecord] = useState<any | null>(null);
+    const [editForm, setEditForm] = useState({
+        paid_at: '',
+        paid_amount: '',
+        negotiated_discount_amount: '',
+        method: '',
+        note: ''
+    });
+    const [editSubmitting, setEditSubmitting] = useState(false);
 
     const limit = 20;
 
@@ -55,6 +68,58 @@ export default function PaymentHistoryPage() {
             alert(err.message);
         } finally {
             setDeleteLoading(null);
+        }
+    };
+
+    const openEdit = (record: any) => {
+        setEditRecord(record);
+        setEditForm({
+            paid_at: record.paid_at || '',
+            paid_amount: record.paid_amount?.toString() || '0',
+            negotiated_discount_amount: record.negotiated_discount_amount?.toString() || '0',
+            method: record.method || '微信支付',
+            note: record.note || ''
+        });
+    };
+
+    const handleEditSubmit = async () => {
+        if (!editRecord) return;
+        setEditSubmitting(true);
+        try {
+            const res = await fetch(`/api/finance/payment/history`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editRecord.id,
+                    paid_at: editForm.paid_at,
+                    paid_amount: parseFloat(editForm.paid_amount) || 0,
+                    negotiated_discount_amount: parseFloat(editForm.negotiated_discount_amount) || 0,
+                    method: editForm.method,
+                    note: editForm.note
+                })
+            });
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+
+            // Update local state
+            setData(prev => prev.map(item => {
+                if (item.id === editRecord.id) {
+                    return {
+                        ...item,
+                        paid_at: editForm.paid_at,
+                        paid_amount: parseFloat(editForm.paid_amount) || 0,
+                        negotiated_discount_amount: parseFloat(editForm.negotiated_discount_amount) || 0,
+                        method: editForm.method,
+                        note: editForm.note
+                    };
+                }
+                return item;
+            }));
+            setEditRecord(null);
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setEditSubmitting(false);
         }
     };
 
@@ -169,18 +234,27 @@ export default function PaymentHistoryPage() {
                                         </td>
                                         <td className="py-4 px-4 text-center">
                                             {role === 'admin' && (
-                                                <button
-                                                    onClick={() => handleDelete(item.id)}
-                                                    disabled={deleteLoading === item.id}
-                                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                    title="删除记录"
-                                                >
-                                                    {deleteLoading === item.id ? (
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                    ) : (
-                                                        <Trash2 className="w-4 h-4" />
-                                                    )}
-                                                </button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={() => openEdit(item)}
+                                                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                        title="修改记录"
+                                                    >
+                                                        <Edit2 className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(item.id)}
+                                                        disabled={deleteLoading === item.id}
+                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                        title="删除记录"
+                                                    >
+                                                        {deleteLoading === item.id ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="w-4 h-4" />
+                                                        )}
+                                                    </button>
+                                                </div>
                                             )}
                                         </td>
                                     </tr>
@@ -255,6 +329,107 @@ export default function PaymentHistoryPage() {
                                 className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl transition-all border border-slate-200"
                             >
                                 关闭
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Edit Modal */}
+            {editRecord && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                                <Edit2 className="w-5 h-5 text-blue-500" />
+                                修改收款记录
+                            </h3>
+                            <button
+                                onClick={() => setEditRecord(null)}
+                                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">收款日期</label>
+                                <input
+                                    type="date"
+                                    value={editForm.paid_at}
+                                    onChange={e => setEditForm(prev => ({ ...prev, paid_at: e.target.value }))}
+                                    className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
+                                    <Banknote className="w-4 h-4 text-emerald-500" />
+                                    收款金额
+                                </label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">¥</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editForm.paid_amount}
+                                        onChange={e => setEditForm(prev => ({ ...prev, paid_amount: e.target.value }))}
+                                        className="w-full rounded-xl border border-slate-200 py-2.5 pl-8 pr-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-sm font-mono"
+                                    />
+                                </div>
+                                <p className="mt-1 text-xs text-slate-500">修改收款金额会自动调整对应账单的已收金额</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">优惠金额</label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">¥</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editForm.negotiated_discount_amount}
+                                        onChange={e => setEditForm(prev => ({ ...prev, negotiated_discount_amount: e.target.value }))}
+                                        className="w-full rounded-xl border border-slate-200 py-2.5 pl-8 pr-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-sm font-mono"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">收款方式</label>
+                                <select
+                                    value={editForm.method}
+                                    onChange={e => setEditForm(prev => ({ ...prev, method: e.target.value }))}
+                                    className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white transition-colors text-sm"
+                                >
+                                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
+                                    <FileText className="w-4 h-4 text-slate-400" />
+                                    备注
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editForm.note}
+                                    onChange={e => setEditForm(prev => ({ ...prev, note: e.target.value }))}
+                                    placeholder="选填"
+                                    className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-sm"
+                                />
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+                            <button
+                                onClick={() => setEditRecord(null)}
+                                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-xl transition-all"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleEditSubmit}
+                                disabled={editSubmitting}
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {editSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                保存修改
                             </button>
                         </div>
                     </div>

@@ -103,3 +103,70 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
     }
 }
+
+export async function PATCH(request: NextRequest) {
+    try {
+        const role = await getRole();
+        if (role !== 'admin') {
+            return NextResponse.json({ error: '权限不足，仅管理员可修改' }, { status: 403 });
+        }
+
+        const body = await request.json();
+        const { id, paid_at, paid_amount, method, negotiated_discount_amount, note } = body;
+
+        if (!id) {
+            return NextResponse.json({ error: '缺失记录ID' }, { status: 400 });
+        }
+
+        const supabase = createAdminClient();
+
+        // Fetch old record first to compute difference if paid_amount changes
+        const { data: oldRecord, error: fetchError } = await supabase
+            .from('payment_records')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !oldRecord) {
+            return NextResponse.json({ error: fetchError?.message || '记录不存在' }, { status: 404 });
+        }
+
+        // Handle paid amount difference and receivable reconciliation
+        if (typeof paid_amount === 'number' && paid_amount !== oldRecord.paid_amount && oldRecord.receivable_id) {
+            const diff = paid_amount - oldRecord.paid_amount;
+            const { data: receivable } = await supabase
+                .from('company_receivables')
+                .select('amount_paid_period')
+                .eq('id', oldRecord.receivable_id)
+                .single();
+
+            if (receivable) {
+                const newPaid = Math.max(0, (receivable.amount_paid_period || 0) + diff);
+                await supabase
+                    .from('company_receivables')
+                    .update({ amount_paid_period: newPaid })
+                    .eq('id', oldRecord.receivable_id);
+            }
+        }
+
+        const updates: any = {};
+        if (paid_at !== undefined) updates.paid_at = paid_at;
+        if (paid_amount !== undefined) updates.paid_amount = paid_amount;
+        if (method !== undefined) updates.method = method;
+        if (negotiated_discount_amount !== undefined) updates.negotiated_discount_amount = negotiated_discount_amount;
+        if (note !== undefined) updates.note = note;
+
+        const { error: updateError } = await supabase
+            .from('payment_records')
+            .update(updates)
+            .eq('id', id);
+
+        if (updateError) {
+            return NextResponse.json({ error: updateError.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (err: any) {
+        return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
+    }
+}
