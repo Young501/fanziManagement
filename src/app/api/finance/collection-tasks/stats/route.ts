@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -27,23 +27,9 @@ export async function GET() {
         const monthEnd = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
         const { data: tasks, error } = await supabase
-            .from('collection_tasks')
-            .select(`
-                id,
-                status,
-                due_date,
-                receivable_id,
-                company_receivables!inner (
-                    payment_due_date,
-                    amount_payable_period,
-                    amount_paid_period
-                ),
-                customers!inner (
-                    customer_status
-                )
-            `)
-            .in('status', ['open', 'in_progress', 'promised'])
-            .neq('customers.customer_status', '流失');
+            .from('collection_tasks_view')
+            .select('uncollected_amount, is_overdue, receivable_due_date')
+            .gt('uncollected_amount', 0);
 
         if (error) {
             console.error('[collection-tasks/stats] error:', error);
@@ -55,23 +41,12 @@ export async function GET() {
         let total_uncollected = 0;
 
         for (const task of (tasks || [])) {
-            const rec = (task as any).company_receivables;
-            if (!rec) continue;
-
-            const paid = Number(rec.amount_paid_period || 0);
-            const payable = Number(rec.amount_payable_period || 0);
-            const uncollected = payable - paid;
-
-            if (uncollected <= 0) continue;
-
+            const uncollected = Number(task.uncollected_amount || 0);
             total_uncollected += uncollected;
 
-            const dueDate = rec.payment_due_date;
-            if (!dueDate) continue;
-
-            if (dueDate < monthStart) {
+            if (task.is_overdue) {
                 overdue_count++;
-            } else if (dueDate >= monthStart && dueDate <= monthEnd) {
+            } else if (task.receivable_due_date >= monthStart && task.receivable_due_date <= monthEnd) {
                 due_this_month_count++;
             }
         }

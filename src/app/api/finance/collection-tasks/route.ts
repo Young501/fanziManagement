@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -40,96 +40,91 @@ export async function GET(request: NextRequest) {
         const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         const monthEnd = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
-        const { data: allTasks, error } = await supabase
-            .from('collection_tasks')
-            .select(`
-                id,
-                created_at,
-                customer_id,
-                receivable_id,
-                priority,
-                status,
-                target_amount,
-                due_date,
-                next_followup_at,
-                owner,
-                last_contact_at,
-                note,
-                company_receivables (
-                    payment_due_date,
-                    amount_payable_period,
-                    amount_paid_period,
-                    billing_fee_month,
-                    pay_cycle_months,
-                    has_contract,
-                    contract_end_date,
-                    receipt_note
-                ),
-                customers!inner (
-                    id,
-                    company_name,
-                    contact_person,
-                    contact_info,
-                    service_manager,
-                    customer_status
-                )
-            `)
-            .in('status', ['open', 'in_progress', 'promised'])
-            .neq('customers.customer_status', '流失');
+        const { count } = await supabase
+            .from('collection_tasks_view')
+            .select('*', { count: 'exact', head: true })
+            .gt('uncollected_amount', 0)
+            .eq(tab === 'overdue' ? 'is_overdue' : 'is_overdue', tab === 'overdue' ? true : false)
+            .gte(tab === 'due_this_month' ? 'receivable_due_date' : 'id', tab === 'due_this_month' ? monthStart : '00000000-0000-0000-0000-000000000000')
+            .lte(tab === 'due_this_month' ? 'receivable_due_date' : 'id', tab === 'due_this_month' ? monthEnd : 'ffffffff-ffff-ffff-ffff-ffffffffffff');
+
+        let query = supabase
+            .from('collection_tasks_view')
+            .select('*')
+            .gt('uncollected_amount', 0);
+
+        if (tab === 'overdue') {
+            query = query.eq('is_overdue', true);
+            // Sorting for overdue: overdue_days DESC, then priority ASC
+            // overdue_days is calculated in the view or here?
+            // Actually, we can fetch all filtered and calculate overdue_days to sort, or just sort by receivable_due_date ASC
+            query = query.order('receivable_due_date', { ascending: true }).order('priority', { ascending: true });
+        } else {
+            query = query
+                .eq('is_overdue', false)
+                .gte('receivable_due_date', monthStart)
+                .lte('receivable_due_date', monthEnd);
+            query = query.order('receivable_due_date', { ascending: true }).order('priority', { ascending: true });
+        }
+
+        const { data: rawTasks, error } = await query.range(offset, offset + limit - 1);
 
         if (error) {
             console.error('[collection-tasks GET] error:', error);
             return noStoreJson({ error: error.message }, 500);
         }
 
-        const enriched = (allTasks || [])
-            .map((task: any) => {
-                const rec = task.company_receivables ?? {};
-                const paid = Number(rec.amount_paid_period || 0);
-                const payable = Number(rec.amount_payable_period ?? 0);
-                const uncollected_amount = Math.max(0, payable - paid);
-                const dueDate = rec.payment_due_date ?? task.due_date;
-                const isOverdue = Boolean(dueDate && dueDate < monthStart);
-                const overdue_days = isOverdue
-                    ? Math.floor((today.getTime() - new Date(dueDate).getTime()) / 86400000)
-                    : 0;
-                const days_until_due = !isOverdue && dueDate
-                    ? Math.ceil((new Date(dueDate).getTime() - today.getTime()) / 86400000)
-                    : null;
+        // Reconstruct the expected nested structure for the frontend
+        const paginated = (rawTasks || []).map((task: any) => {
+            const isOverdue = !!task.is_overdue;
+            const dueDate = task.receivable_due_date;
+            const overdue_days = isOverdue && dueDate
+                ? Math.floor((today.getTime() - new Date(dueDate).getTime()) / 86400000)
+                : 0;
+            const days_until_due = !isOverdue && dueDate
+                ? Math.ceil((new Date(dueDate).getTime() - today.getTime()) / 86400000)
+                : null;
 
-                return {
-                    ...task,
-                    uncollected_amount,
-                    overdue_days,
-                    days_until_due,
-                    is_overdue: isOverdue,
-                    receivable_due_date: dueDate,
-                };
-            })
-            .filter((task: any) => task.uncollected_amount > 0);
+            return {
+                id: task.id,
+                created_at: task.created_at,
+                customer_id: task.customer_id,
+                receivable_id: task.receivable_id,
+                priority: task.priority,
+                status: task.status,
+                target_amount: task.target_amount,
+                due_date: task.due_date,
+                next_followup_at: task.next_followup_at,
+                owner: task.owner,
+                last_contact_at: task.last_contact_at,
+                note: task.note,
+                uncollected_amount: Number(task.uncollected_amount),
+                overdue_days,
+                days_until_due,
+                is_overdue: isOverdue,
+                receivable_due_date: dueDate,
+                customers: {
+                    id: task.customer_id,
+                    company_name: task.company_name,
+                    contact_person: task.contact_person,
+                    contact_info: task.contact_info,
+                    service_manager: task.service_manager,
+                    customer_status: task.customer_status
+                },
+                company_receivables: task.receivable_id ? {
+                    payment_due_date: task.payment_due_date,
+                    amount_payable_period: task.amount_payable_period,
+                    amount_paid_period: task.amount_paid_period,
+                    billing_fee_month: task.billing_fee_month,
+                    pay_cycle_months: task.pay_cycle_months,
+                    has_contract: task.has_contract,
+                    contract_end_date: task.contract_end_date,
+                    receipt_note: task.receipt_note
+                } : null
+            };
+        });
 
-        let filtered: any[];
-        if (tab === 'overdue') {
-            filtered = enriched.filter((t: any) => t.is_overdue);
-            filtered.sort((a: any, b: any) => {
-                if (b.overdue_days !== a.overdue_days) return b.overdue_days - a.overdue_days;
-                return (a.priority ?? 'P2').localeCompare(b.priority ?? 'P2');
-            });
-        } else {
-            filtered = enriched.filter((t: any) =>
-                t.receivable_due_date >= monthStart &&
-                t.receivable_due_date <= monthEnd
-            );
-            filtered.sort((a: any, b: any) => {
-                const da = a.days_until_due ?? 999;
-                const db = b.days_until_due ?? 999;
-                if (da !== db) return da - db;
-                return (a.priority ?? 'P2').localeCompare(b.priority ?? 'P2');
-            });
-        }
-
-        const total = filtered.length;
-        const paginated = filtered.slice(offset, offset + limit);
+        const total = count ?? 0;
 
         return noStoreJson({
             data: paginated,
