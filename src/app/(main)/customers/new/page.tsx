@@ -13,6 +13,60 @@ export default function NewCustomerPage() {
     // Form State
     // ... (rest of form state)
 
+    // Customer Company Profile State
+    const [profileCompanyType, setProfileCompanyType] = useState('');
+    const [companyNature, setCompanyNature] = useState('');
+    const [taxRate, setTaxRate] = useState('');
+    const [taxpayerNo, setTaxpayerNo] = useState('');
+    const [legalPerson, setLegalPerson] = useState('');
+    const [supervisor, setSupervisor] = useState('');
+    const [financeContact, setFinanceContact] = useState('');
+    const [taxHandler, setTaxHandler] = useState('');
+    const [registrationDate, setRegistrationDate] = useState('');
+    const [registeredCapital, setRegisteredCapital] = useState('');
+    const [registeredCapitalUnit, setRegisteredCapitalUnit] = useState('万元');
+    const [taxOffice, setTaxOffice] = useState('');
+    const [taxAdmin, setTaxAdmin] = useState('');
+    const [taxAdminPhone, setTaxAdminPhone] = useState('');
+    const [community, setCommunity] = useState('');
+    const [invoiceProxyFlag, setInvoiceProxyFlag] = useState(false);
+    const [cloudAccounting, setCloudAccounting] = useState('');
+    const [accountBookNo, setAccountBookNo] = useState('');
+    const [serialNo, setSerialNo] = useState('');
+    const [companyLoginName, setCompanyLoginName] = useState('');
+    const [companyLoginPassword, setCompanyLoginPassword] = useState('');
+    const [contractFlag, setContractFlag] = useState(false);
+    const [profileNote, setProfileNote] = useState('');
+    const [lastYearRevenue, setLastYearRevenue] = useState('');
+    const [mainBusiness, setMainBusiness] = useState('');
+    const [sealCompany, setSealCompany] = useState(false);
+    const [sealLegal, setSealLegal] = useState(false);
+    const [sealFinance, setSealFinance] = useState(false);
+    const [sealInvoice, setSealInvoice] = useState(false);
+    const [sealShareholder, setSealShareholder] = useState(false);
+    const [receiptCardBankName, setReceiptCardBankName] = useState('');
+    const [caToken, setCaToken] = useState(false);
+
+    // Explicit Contract Fields
+    const [contractName, setContractName] = useState('');
+    const [contractNo, setContractNo] = useState('');
+    const [contractType, setContractType] = useState('service');
+    const [autoRenew, setAutoRenew] = useState(false);
+    const [invoiceRule, setInvoiceRule] = useState('');
+    const [contractRemark, setContractRemark] = useState('');
+    const [signDate, setSignDate] = useState('');
+    const [contractFile, setContractFile] = useState<File | null>(null);
+
+    // Advanced Profile Toggle State
+    const [showAdvancedProfile, setShowAdvancedProfile] = useState(false);
+
+    // Initial Payment State
+    const [hasPaid, setHasPaid] = useState(false);
+    const [paidAmount, setPaidAmount] = useState('');
+    const [paidAt, setPaidAt] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState('');
+    const [paymentNote, setPaymentNote] = useState('');
+
     // History State
     const [records, setRecords] = useState<any[]>([]);
     const [total, setTotal] = useState(0);
@@ -41,11 +95,7 @@ export default function NewCustomerPage() {
     const [effectiveDate, setEffectiveDate] = useState(''); // required
     const [depositAmount, setDepositAmount] = useState('');
 
-    // Explicit Contract Fields
-    const [contractName, setContractName] = useState('');
-    const [contractNo, setContractNo] = useState('');
-    const [signDate, setSignDate] = useState('');
-    const [contractFile, setContractFile] = useState<File | null>(null);
+
 
     const [serviceManagers, setServiceManagers] = useState<string[]>([]);
 
@@ -150,6 +200,43 @@ export default function NewCustomerPage() {
             };
             formData.append('customerData', JSON.stringify(customerPayload));
 
+            // Customer Company Profile Info
+            const profilePayload = {
+                company_type: profileCompanyType,
+                company_nature: companyNature,
+                tax_rate: taxRate,
+                taxpayer_no: taxpayerNo,
+                legal_person: legalPerson,
+                supervisor: supervisor,
+                finance_contact: financeContact,
+                tax_handler: taxHandler,
+                registration_date: registrationDate || null,
+                registered_capital: registeredCapital || null,
+                registered_capital_unit: registeredCapitalUnit,
+                tax_office: taxOffice,
+                tax_admin: taxAdmin,
+                tax_admin_phone: taxAdminPhone,
+                community: community,
+                invoice_proxy_flag: invoiceProxyFlag,
+                cloud_accounting: cloudAccounting,
+                account_book_no: accountBookNo,
+                serial_no: serialNo,
+                company_login_name: companyLoginName,
+                company_login_password: companyLoginPassword,
+                contract_flag: contractFlag,
+                note: profileNote,
+                last_year_revenue: lastYearRevenue || null,
+                main_business: mainBusiness,
+                seal_company: sealCompany,
+                seal_legal: sealLegal,
+                seal_finance: sealFinance,
+                seal_invoice: sealInvoice,
+                seal_shareholder: sealShareholder,
+                receipt_card_bank_name: receiptCardBankName,
+                ca_token: caToken
+            };
+            formData.append('profileData', JSON.stringify(profilePayload));
+
             // Contract / Pricing info
             const contractPayload = {
                 has_contract: hasContract,
@@ -160,9 +247,22 @@ export default function NewCustomerPage() {
                 deposit_amount: depositAmount,
                 contract_name: contractName,
                 contract_no: contractNo,
+                contract_type: contractType,
+                auto_renew: autoRenew,
+                invoice_rule: invoiceRule,
+                remark: contractRemark,
                 sign_date: signDate
             };
             formData.append('contractData', JSON.stringify(contractPayload));
+
+            const paymentPayload = {
+                has_paid: hasPaid,
+                paid_amount: hasPaid ? paidAmount : null,
+                paid_at: hasPaid ? paidAt : null,
+                method: paymentMethod,
+                note: paymentNote
+            };
+            formData.append('paymentData', JSON.stringify(paymentPayload));
 
             if (hasContract && contractFile) {
                 formData.append('contract_file', contractFile);
@@ -414,17 +514,6 @@ export default function NewCustomerPage() {
                                             placeholder="如适用，请填写官网账号ID"
                                         />
                                     </div>
-
-                                    <div className="md:col-span-2">
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">通信/办公地址</label>
-                                        <input
-                                            type="text"
-                                            value={address}
-                                            onChange={e => setAddress(e.target.value)}
-                                            className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
-                                            placeholder="详细办公或寄件地址"
-                                        />
-                                    </div>
                                 </div>
 
                                 <div className="mt-8 mb-6 pb-3 border-b border-slate-100 flex items-center justify-between">
@@ -540,12 +629,58 @@ export default function NewCustomerPage() {
                                                     />
                                                 </div>
                                                 <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1">合同类型</label>
+                                                    <select
+                                                        value={contractType}
+                                                        onChange={e => setContractType(e.target.value)}
+                                                        className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
+                                                        required
+                                                    >
+                                                        <option value="service">服务合同</option>
+                                                        <option value="software">软件购买合同</option>
+                                                        <option value="other">其他</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1">自动续约</label>
+                                                    <div className="flex items-center space-x-2 mt-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="autoRenew"
+                                                            checked={autoRenew}
+                                                            onChange={e => setAutoRenew(e.target.checked)}
+                                                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                        />
+                                                        <label htmlFor="autoRenew" className="text-sm font-medium text-slate-700">到期自动延续</label>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1">开票规则要求</label>
+                                                    <input
+                                                        type="text"
+                                                        value={invoiceRule}
+                                                        onChange={e => setInvoiceRule(e.target.value)}
+                                                        className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                                                        placeholder="开票规则描述"
+                                                    />
+                                                </div>
+                                                <div>
                                                     <label className="block text-sm font-medium text-slate-700 mb-1">实际签订日期</label>
                                                     <input
                                                         type="date"
                                                         value={signDate}
                                                         onChange={e => setSignDate(e.target.value)}
                                                         className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                                                    />
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1">合同备注</label>
+                                                    <textarea
+                                                        rows={2}
+                                                        value={contractRemark}
+                                                        onChange={e => setContractRemark(e.target.value)}
+                                                        className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                                                        placeholder="合同相关说明"
                                                     />
                                                 </div>
                                                 <div>
@@ -583,6 +718,258 @@ export default function NewCustomerPage() {
                                         </>
                                     )}
                                 </div>
+                                <div className={`mt-8 mb-6 pb-4 border rounded-xl overflow-hidden transition-all ${hasPaid ? 'border-blue-400 shadow-md ring-1 ring-blue-100' : 'border-slate-200 shadow-sm'}`}>
+                                    <div className={`px-6 py-4 flex items-center justify-between ${hasPaid ? 'bg-blue-50/80 border-b border-blue-100' : 'bg-slate-50 border-b border-slate-100'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${hasPaid ? 'bg-blue-100 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>
+                                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <h2 className={`text-lg font-bold ${hasPaid ? 'text-blue-900' : 'text-slate-800'}`}>首期收款确认</h2>
+                                                <p className="text-xs text-slate-500 mt-0.5">确认是否在建档时已完成首次款项支付</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <input
+                                                type="checkbox"
+                                                id="hasPaid"
+                                                checked={hasPaid}
+                                                onChange={e => setHasPaid(e.target.checked)}
+                                                className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                            />
+                                            <label htmlFor="hasPaid" className={`text-sm font-semibold cursor-pointer select-none ${hasPaid ? 'text-blue-700' : 'text-slate-600'}`}>建档时已收首期款/全款</label>
+                                        </div>
+                                    </div>
+                                    {hasPaid && (
+                                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 bg-blue-50/20">
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">已收金额 (元) <span className="text-red-500">*</span></label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={paidAmount}
+                                                    onChange={e => setPaidAmount(e.target.value)}
+                                                    className="w-full rounded-xl border border-blue-200 py-3 px-4 text-blue-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
+                                                    placeholder="0.00"
+                                                    required={hasPaid}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">收款日期 <span className="text-red-500">*</span></label>
+                                                <input
+                                                    type="date"
+                                                    value={paidAt}
+                                                    onChange={e => setPaidAt(e.target.value)}
+                                                    className="w-full rounded-xl border border-blue-200 py-3 px-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
+                                                    required={hasPaid}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">收款方式 <span className="text-red-500">*</span></label>
+                                                <select
+                                                    value={paymentMethod}
+                                                    onChange={e => setPaymentMethod(e.target.value)}
+                                                    className="w-full rounded-xl border border-blue-200 py-3 px-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
+                                                    required={hasPaid}
+                                                >
+                                                    <option value="">-- 请选择 --</option>
+
+                                                    <option value="微信支付">微信支付</option>
+                                                    <option value="支付宝">支付宝</option>
+                                                    <option value="现金">现金</option>
+                                                    <option value="银行汇款">银行汇款</option>
+                                                    <option value="其他">其他</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">收款备注</label>
+                                                <input
+                                                    type="text"
+                                                    value={paymentNote}
+                                                    onChange={e => setPaymentNote(e.target.value)}
+                                                    className="w-full rounded-xl border border-blue-200 py-3 px-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-8 mb-4 border rounded-xl overflow-hidden border-slate-200 shadow-sm transition-all">
+                                    <div
+                                        className="px-6 py-4 bg-slate-50 flex items-center justify-between cursor-pointer hover:bg-slate-100 transition-colors"
+                                        onClick={() => setShowAdvancedProfile(!showAdvancedProfile)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
+                                                <UserPlus className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-slate-800">客户画像 / 公司详细信息 (选填)</h2>
+                                                <p className="text-xs text-slate-500">可在未来方便时补充完善</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className={`p-2 rounded-full hover:bg-slate-200 transition-transform ${showAdvancedProfile ? 'rotate-180' : ''}`}
+                                        >
+                                            <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    {showAdvancedProfile && (
+                                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 border-t border-slate-100">
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">公司类型</label>
+                                                <input type="text" value={profileCompanyType} onChange={e => setProfileCompanyType(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">企业性质</label>
+                                                <input type="text" value={companyNature} onChange={e => setCompanyNature(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">税率</label>
+                                                <input type="text" value={taxRate} onChange={e => setTaxRate(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">纳税人识别号</label>
+                                                <input type="text" value={taxpayerNo} onChange={e => setTaxpayerNo(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">法人代表</label>
+                                                <input type="text" value={legalPerson} onChange={e => setLegalPerson(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">监事</label>
+                                                <input type="text" value={supervisor} onChange={e => setSupervisor(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">财务联系人</label>
+                                                <input type="text" value={financeContact} onChange={e => setFinanceContact(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">办税员</label>
+                                                <input type="text" value={taxHandler} onChange={e => setTaxHandler(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">注册日期</label>
+                                                <input type="date" value={registrationDate} onChange={e => setRegistrationDate(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">注册资本</label>
+                                                <div className="flex">
+                                                    <input type="number" step="0.01" value={registeredCapital} onChange={e => setRegisteredCapital(e.target.value)} className="flex-1 rounded-l-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                                    <select value={registeredCapitalUnit} onChange={e => setRegisteredCapitalUnit(e.target.value)} className="rounded-r-xl border border-l-0 border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-slate-50">
+                                                        <option value="元">元</option>
+                                                        <option value="万元">万元</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">所属税局</label>
+                                                <input type="text" value={taxOffice} onChange={e => setTaxOffice(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">税管员</label>
+                                                <input type="text" value={taxAdmin} onChange={e => setTaxAdmin(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">税管员电话</label>
+                                                <input type="text" value={taxAdminPhone} onChange={e => setTaxAdminPhone(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">所属社区</label>
+                                                <input type="text" value={community} onChange={e => setCommunity(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">代开发票</label>
+                                                <div className="flex items-center space-x-2 mt-2">
+                                                    <input type="checkbox" id="invoiceProxyFlag" checked={invoiceProxyFlag} onChange={e => setInvoiceProxyFlag(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                    <label htmlFor="invoiceProxyFlag" className="text-sm font-medium text-slate-700">是</label>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">云账房</label>
+                                                <input type="text" value={cloudAccounting} onChange={e => setCloudAccounting(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">账本编号</label>
+                                                <input type="text" value={accountBookNo} onChange={e => setAccountBookNo(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">序号档案</label>
+                                                <input type="text" value={serialNo} onChange={e => setSerialNo(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">税局登录名</label>
+                                                <input type="text" value={companyLoginName} onChange={e => setCompanyLoginName(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">税局登录密码</label>
+                                                <input type="text" value={companyLoginPassword} onChange={e => setCompanyLoginPassword(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">合同归档</label>
+                                                <div className="flex items-center space-x-2 mt-2">
+                                                    <input type="checkbox" id="contractFlag" checked={contractFlag} onChange={e => setContractFlag(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                    <label htmlFor="contractFlag" className="text-sm font-medium text-slate-700">已归档</label>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">上年营收额 (元)</label>
+                                                <input type="number" step="0.01" value={lastYearRevenue} onChange={e => setLastYearRevenue(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">主营业务简述</label>
+                                                <textarea rows={2} value={mainBusiness} onChange={e => setMainBusiness(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="简要描述公司的主要经营业务"></textarea>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">印章留存</label>
+                                                <div className="flex flex-wrap gap-4 mt-2">
+                                                    <div className="flex items-center space-x-2">
+                                                        <input type="checkbox" id="sealCompany" checked={sealCompany} onChange={e => setSealCompany(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                        <label htmlFor="sealCompany" className="text-sm font-medium text-slate-700">公章</label>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <input type="checkbox" id="sealLegal" checked={sealLegal} onChange={e => setSealLegal(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                        <label htmlFor="sealLegal" className="text-sm font-medium text-slate-700">法人章</label>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <input type="checkbox" id="sealFinance" checked={sealFinance} onChange={e => setSealFinance(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                        <label htmlFor="sealFinance" className="text-sm font-medium text-slate-700">财务章</label>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <input type="checkbox" id="sealInvoice" checked={sealInvoice} onChange={e => setInvoiceProxyFlag(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                        <label htmlFor="sealInvoice" className="text-sm font-medium text-slate-700">发票章</label>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <input type="checkbox" id="sealShareholder" checked={sealShareholder} onChange={e => setSealShareholder(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                        <label htmlFor="sealShareholder" className="text-sm font-medium text-slate-700">股东章</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">开户银行名称</label>
+                                                <input type="text" value={receiptCardBankName} onChange={e => setReceiptCardBankName(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">CA扣款标志</label>
+                                                <div className="flex items-center space-x-2 mt-2">
+                                                    <input type="checkbox" id="caToken" checked={caToken} onChange={e => setCaToken(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                    <label htmlFor="caToken" className="text-sm font-medium text-slate-700">有</label>
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">画像备注</label>
+                                                <input type="text" value={profileNote} onChange={e => setProfileNote(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all" placeholder="" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
                             </div>
                         </div>
                     ) : (

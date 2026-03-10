@@ -1,8 +1,9 @@
-﻿import { createClient } from '@supabase/supabase-js';
+﻿import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
-    return createClient(
+    return createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
@@ -34,9 +35,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             return noStoreJson({ error: 'Missing receivable ID' }, 400);
         }
 
+        const supabase = await createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+            return noStoreJson({ error: 'Unauthorized' }, 401);
+        }
+
+        const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        if (profile?.role !== 'admin' && profile?.role !== 'manager') {
+            return noStoreJson({ error: 'Forbidden: Admin or Manager role required' }, 403);
+        }
+
         const body = await request.json();
 
-        const supabase = createAdminClient();
+        const adminSupabase = createAdminClient();
 
         const payload = {
             billing_fee_month: toNullableNumber(body.billing_fee_month),
@@ -50,7 +68,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             note: toNullableString(body.note),
         };
 
-        const { data, error } = await supabase
+        const { data, error } = await adminSupabase
             .from('company_receivables')
             .update(payload)
             .eq('id', id)

@@ -90,7 +90,7 @@ const RENEWAL_FIELD_LABELS: Record<keyof RenewalFields, string> = {
     discount_gap: '优惠差额',
 };
 
-const PAYMENT_METHODS = ['转账', '微信支付', '支付宝', '现金', '银行汇款', '其他'];
+const PAYMENT_METHODS = ['微信支付', '支付宝', '现金', '银行汇款', '其他'];
 
 function formatCurrency(val: number | null | undefined) {
     if (val == null) return '¥0.00';
@@ -468,7 +468,7 @@ function PaymentEntryContent() {
 
             setSubmitSuccess(true);
             clearScreenshot();
-            
+
             if (selectedCustomer) {
                 const r2 = await fetch(`/api/finance/payment/receivables?customer_id=${selectedCustomer.id}`);
                 const j2 = await r2.json();
@@ -479,10 +479,10 @@ function PaymentEntryContent() {
                     setSelectedReceivable(updated);
                 }
             }
-            
+
             setPaidAmount('');
             setNote('');
-            
+
             if (isAdHoc) {
                 setAdHocServiceName('');
                 if (!selectedCustomer) {
@@ -530,88 +530,88 @@ function PaymentEntryContent() {
 
                     {/* Step A: Customer Search */}
                     {(!isAdHoc || isAdHoc) && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-visible">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">A</div>
-                            <h2 className="text-sm font-semibold text-slate-800">
-                                选择客户 {isAdHoc && <span className="text-xs text-slate-400 font-normal ml-2">(选填)</span>}
-                            </h2>
-                        </div>
-                        <div className="p-5">
-                            <div className="relative" ref={dropdownRef}>
-                                <div className="flex items-center gap-2">
-                                    <div className="relative flex-1">
-                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                            {customerLoading
-                                                ? <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
-                                                : <Search className="h-4 w-4 text-slate-400" />}
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-visible">
+                            <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">A</div>
+                                <h2 className="text-sm font-semibold text-slate-800">
+                                    选择客户 {isAdHoc && <span className="text-xs text-slate-400 font-normal ml-2">(选填)</span>}
+                                </h2>
+                            </div>
+                            <div className="p-5">
+                                <div className="relative" ref={dropdownRef}>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                                {customerLoading
+                                                    ? <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
+                                                    : <Search className="h-4 w-4 text-slate-400" />}
+                                            </div>
+                                            <input
+                                                type="text"
+                                                placeholder="搜索公司名称..."
+                                                className="block w-full rounded-xl border-0 py-2.5 pl-10 pr-4 text-slate-900 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-600 sm:text-sm transition-all"
+                                                value={customerSearch}
+                                                onChange={e => handleCustomerSearch(e.target.value)}
+                                                onFocus={() => setShowDropdown(true)}
+                                            />
                                         </div>
-                                        <input
-                                            type="text"
-                                            placeholder="搜索公司名称..."
-                                            className="block w-full rounded-xl border-0 py-2.5 pl-10 pr-4 text-slate-900 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-600 sm:text-sm transition-all"
-                                            value={customerSearch}
-                                            onChange={e => handleCustomerSearch(e.target.value)}
-                                            onFocus={() => setShowDropdown(true)}
-                                        />
+                                        {selectedCustomer && (
+                                            <button onClick={clearCustomer} className="p-2.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        )}
                                     </div>
-                                    {selectedCustomer && (
-                                        <button onClick={clearCustomer} className="p-2.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
-                                            <X className="w-4 h-4" />
-                                        </button>
+
+                                    {showDropdown && customerSearch && customerResults.length > 0 && (
+                                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden max-h-64 overflow-y-auto">
+                                            {customerResults.map(c => (
+                                                <button
+                                                    key={c.id}
+                                                    className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors flex items-center justify-between group"
+                                                    onClick={() => selectCustomer(c)}
+                                                >
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">{c.company_name}</p>
+                                                        {(c.contact_person || c.contact_info) && (
+                                                            <div className="text-xs text-slate-500 mt-0.5 flex gap-1">
+                                                                {c.contact_person && <span>{c.contact_person}</span>}
+                                                                {c.contact_person && c.contact_info && <span>·</span>}
+                                                                {c.contact_info && <MaskedContact contact={c.contact_info} />}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {showDropdown && customerSearch && !customerLoading && customerResults.length === 0 && (
+                                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 px-4 py-3 text-sm text-slate-500">
+                                            未找到相关客户
+                                        </div>
                                     )}
                                 </div>
 
-                                {showDropdown && customerSearch && customerResults.length > 0 && (
-                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden max-h-64 overflow-y-auto">
-                                        {customerResults.map(c => (
-                                            <button
-                                                key={c.id}
-                                                className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors flex items-center justify-between group"
-                                                onClick={() => selectCustomer(c)}
-                                            >
-                                                <div>
-                                                    <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">{c.company_name}</p>
-                                                    {(c.contact_person || c.contact_info) && (
-                                                        <div className="text-xs text-slate-500 mt-0.5 flex gap-1">
-                                                            {c.contact_person && <span>{c.contact_person}</span>}
-                                                            {c.contact_person && c.contact_info && <span>·</span>}
-                                                            {c.contact_info && <MaskedContact contact={c.contact_info} />}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500" />
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                {showDropdown && customerSearch && !customerLoading && customerResults.length === 0 && (
-                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 px-4 py-3 text-sm text-slate-500">
-                                        未找到相关客户
+                                {selectedCustomer && (
+                                    <div className="mt-4 flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                        <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
+                                            {selectedCustomer.company_name[0]}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-blue-900 truncate">{selectedCustomer.company_name}</p>
+                                            <p className="text-xs text-blue-700 mt-0.5 flex gap-1 items-center">
+                                                {selectedCustomer.contact_person && <span>{selectedCustomer.contact_person}</span>}
+                                                {selectedCustomer.contact_person && selectedCustomer.contact_info && <span>·</span>}
+                                                {selectedCustomer.contact_info && <MaskedContact contact={selectedCustomer.contact_info} className="!text-blue-700" iconClassName="w-3.5 h-3.5 !text-blue-500" />}
+                                                {selectedCustomer.contact_info && selectedCustomer.service_manager && <span>·</span>}
+                                                {selectedCustomer.service_manager && <span>财务: {selectedCustomer.service_manager}</span>}
+                                            </p>
+                                        </div>
+                                        <CheckCircle2 className="w-5 h-5 text-blue-500 flex-shrink-0" />
                                     </div>
                                 )}
                             </div>
-
-                            {selectedCustomer && (
-                                <div className="mt-4 flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
-                                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
-                                        {selectedCustomer.company_name[0]}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-blue-900 truncate">{selectedCustomer.company_name}</p>
-                                        <p className="text-xs text-blue-700 mt-0.5 flex gap-1 items-center">
-                                            {selectedCustomer.contact_person && <span>{selectedCustomer.contact_person}</span>}
-                                            {selectedCustomer.contact_person && selectedCustomer.contact_info && <span>·</span>}
-                                            {selectedCustomer.contact_info && <MaskedContact contact={selectedCustomer.contact_info} className="!text-blue-700" iconClassName="w-3.5 h-3.5 !text-blue-500" />}
-                                            {selectedCustomer.contact_info && selectedCustomer.service_manager && <span>·</span>}
-                                            {selectedCustomer.service_manager && <span>财务: {selectedCustomer.service_manager}</span>}
-                                        </p>
-                                    </div>
-                                    <CheckCircle2 className="w-5 h-5 text-blue-500 flex-shrink-0" />
-                                </div>
-                            )}
                         </div>
-                    </div>
 
                     )}
 
@@ -703,13 +703,13 @@ function PaymentEntryContent() {
                                 请先在上方选择是“常规账单循环收款”还是“一次性项目临时收款”，然后按步骤完善信息。
                             </p>
                             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                                <button 
+                                <button
                                     onClick={() => { /* stay in default or refocus search */ }}
                                     className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                                 >
                                     <Search className="w-4 h-4" /> 开始搜索客户
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => { setIsAdHoc(true); setSubmitError(null); }}
                                     className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                                 >
@@ -1495,7 +1495,7 @@ function PaymentHistoryContent() {
                                 className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-600 outline-none"
                             />
                             {selectedMonth && (
-                                <button 
+                                <button
                                     onClick={() => { setSelectedMonth(''); setPage(1); }}
                                     className="text-xs text-slate-400 hover:text-red-500 underline"
                                 >

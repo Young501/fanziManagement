@@ -103,8 +103,8 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const role = await getRole();
-        if (role !== 'admin') {
-            return NextResponse.json({ error: '权限不足，仅管理员可删除' }, { status: 403 });
+        if (role !== 'admin' && role !== 'manager') {
+            return NextResponse.json({ error: '权限不足，仅管理员或客户经理可删除' }, { status: 403 });
         }
 
         const { searchParams } = new URL(request.url);
@@ -148,8 +148,8 @@ export async function DELETE(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const role = await getRole();
-        if (role !== 'admin') {
-            return NextResponse.json({ error: '权限不足，仅管理员可修改' }, { status: 403 });
+        if (role !== 'admin' && role !== 'manager') {
+            return NextResponse.json({ error: '权限不足，仅管理员或客户经理可修改' }, { status: 403 });
         }
 
         const body = await request.json();

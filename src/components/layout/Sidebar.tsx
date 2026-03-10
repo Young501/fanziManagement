@@ -58,7 +58,7 @@ const slideTransition = {
 export function Sidebar() {
     const pathname = usePathname();
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-    const [userProfile, setUserProfile] = useState<{ fullName: string; email: string; initial: string } | null>(null);
+    const [userProfile, setUserProfile] = useState<{ fullName: string; email: string; initial: string; role: string } | null>(null);
 
     useEffect(() => {
         navItems.forEach((item) => {
@@ -80,9 +80,10 @@ export function Sidebar() {
             } = await supabase.auth.getUser();
 
             if (user) {
-                const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+                const { data: profile } = await supabase.from('profiles').select('full_name, role').eq('id', user.id).single();
                 const email = user.email || '';
                 let fullName = profile?.full_name;
+                const role = profile?.role || 'user';
 
                 if (!fullName && email) {
                     fullName = email.split('@')[0];
@@ -90,7 +91,7 @@ export function Sidebar() {
 
                 fullName = fullName || 'Admin User';
                 const initial = fullName.charAt(0).toUpperCase() || 'A';
-                setUserProfile({ fullName, email, initial });
+                setUserProfile({ fullName, email, initial, role });
             }
         };
 
@@ -269,7 +270,14 @@ export function Sidebar() {
                         {userProfile?.initial || 'AD'}
                     </div>
                     <div className="ml-3 flex-1 overflow-hidden">
-                        <p className="text-sm font-semibold text-slate-800 truncate">{userProfile?.fullName || 'Admin User'}</p>
+                        <div className="flex items-center gap-2 overflow-hidden">
+                            <p className="text-sm font-semibold text-slate-800 truncate">{userProfile?.fullName || 'Admin User'}</p>
+                            {userProfile?.role && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 rounded border border-slate-200">
+                                    {userProfile.role}
+                                </span>
+                            )}
+                        </div>
                         <p className="text-xs text-slate-500 truncate">{userProfile?.email || 'admin@company.com'}</p>
                     </div>
                 </div>

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { History, Trash2, ArrowLeft, Loader2, AlertCircle, Banknote, ImageIcon, ExternalLink, X, Edit2, FileText, TrendingUp, Filter } from 'lucide-react';
 
-const PAYMENT_METHODS = ['转账', '微信支付', '支付宝', '现金', '银行汇款', '其他'];
+const PAYMENT_METHODS = ['微信支付', '支付宝', '现金', '银行汇款', '其他'];
 
 export default function PaymentHistoryPage() {
     const router = useRouter();
@@ -22,7 +22,8 @@ export default function PaymentHistoryPage() {
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedType, setSelectedType] = useState(''); // '' | 'regular' | 'adhoc'
 
-    // Edit state
+    // Details / Edit state
+    const [detailsRecord, setDetailsRecord] = useState<any | null>(null);
     const [editRecord, setEditRecord] = useState<any | null>(null);
     const [editForm, setEditForm] = useState({
         paid_at: '',
@@ -85,6 +86,7 @@ export default function PaymentHistoryPage() {
                 const deleted = data.find(d => d.id === id);
                 return prev - (deleted?.paid_amount || 0);
             });
+            if (detailsRecord?.id === id) setDetailsRecord(null);
         } catch (err: any) {
             alert(err.message);
         } finally {
@@ -331,29 +333,15 @@ export default function PaymentHistoryPage() {
                                             )}
                                         </td>
                                         <td className="py-4 px-4 text-center">
-                                            {role === 'admin' && (
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                        onClick={() => openEdit(item)}
-                                                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                        title="修改记录"
-                                                    >
-                                                        <Edit2 className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(item.id)}
-                                                        disabled={deleteLoading === item.id}
-                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                        title="删除记录"
-                                                    >
-                                                        {deleteLoading === item.id ? (
-                                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                                        ) : (
-                                                            <Trash2 className="w-4 h-4" />
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            )}
+                                            <div className="flex items-center justify-center gap-1">
+                                                <button
+                                                    onClick={() => setDetailsRecord(item)}
+                                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                    title="查看详情"
+                                                >
+                                                    <FileText className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -433,9 +421,124 @@ export default function PaymentHistoryPage() {
                 </div>
             )}
 
+            {/* Details Modal */}
+            {detailsRecord && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+                            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-emerald-500" />
+                                收款记录详情
+                            </h3>
+                            <button
+                                onClick={() => setDetailsRecord(null)}
+                                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-6">
+                            {/* Basic Info */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <div className="text-sm text-slate-500 mb-1">客户名称</div>
+                                    <div className="font-medium text-slate-900">{detailsRecord.customers?.company_name || '未知客户'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-sm text-slate-500 mb-1">收款日期</div>
+                                    <div className="font-medium text-slate-900">{detailsRecord.paid_at}</div>
+                                </div>
+                                <div>
+                                    <div className="text-sm text-slate-500 mb-1">收款金额</div>
+                                    <div className="font-medium text-emerald-600 font-mono text-lg">{formatCurrency(detailsRecord.paid_amount)}</div>
+                                </div>
+                                <div>
+                                    <div className="text-sm text-slate-500 mb-1">优惠金额</div>
+                                    <div className="font-medium text-orange-600 font-mono">
+                                        {detailsRecord.negotiated_discount_amount > 0 ? `-${formatCurrency(detailsRecord.negotiated_discount_amount)}` : '-'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-sm text-slate-500 mb-1">收款方式</div>
+                                    <div className="font-medium text-slate-900">{detailsRecord.method || '-'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-sm text-slate-500 mb-1">账单类型</div>
+                                    <div className="font-medium text-slate-900">
+                                        {detailsRecord.company_receivables?.billing_fee_month ? (
+                                            <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs">
+                                                常规账单
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-xs">
+                                                一次性收款
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="col-span-2">
+                                    <div className="text-sm text-slate-500 mb-1">收款凭证</div>
+                                    {detailsRecord.screenshot ? (
+                                        <div className="relative aspect-video w-full bg-slate-50 rounded-xl overflow-hidden border border-slate-100 group">
+                                            <img
+                                                src={detailsRecord.screenshot}
+                                                alt="Payment Voucher"
+                                                className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-[1.02]"
+                                                onClick={() => setPreviewImage(detailsRecord.screenshot)}
+                                            />
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors pointer-events-none flex items-center justify-center">
+                                                <ImageIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-center p-8 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm">
+                                            未上传凭证
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="col-span-2">
+                                    <div className="text-sm text-slate-500 mb-1">备注</div>
+                                    <div className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
+                                        {detailsRecord.note || <span className="text-slate-400 italic">无备注信息</span>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Actions Grouped */}
+                            {(role === 'admin' || role === 'manager') && (
+                                <div className="pt-4 border-t border-slate-100 flex flex-wrap gap-3">
+                                    <button
+                                        onClick={() => {
+                                            openEdit(detailsRecord);
+                                        }}
+                                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl transition-all"
+                                    >
+                                        <Edit2 className="w-4 h-4" />
+                                        修改记录
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(detailsRecord.id)}
+                                        disabled={deleteLoading === detailsRecord.id}
+                                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-100 hover:bg-red-100 rounded-xl transition-all disabled:opacity-50"
+                                    >
+                                        {deleteLoading === detailsRecord.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Trash2 className="w-4 h-4" />
+                                        )}
+                                        删除记录
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Modal */}
             {/* Edit Modal */}
             {editRecord && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="font-semibold text-slate-900 flex items-center gap-2">
@@ -523,7 +626,20 @@ export default function PaymentHistoryPage() {
                                 取消
                             </button>
                             <button
-                                onClick={handleEditSubmit}
+                                onClick={async () => {
+                                    await handleEditSubmit();
+                                    // if successful, update detailsRecord with new form data
+                                    if (detailsRecord && detailsRecord.id === editRecord.id) {
+                                        setDetailsRecord((prev: any) => ({
+                                            ...prev,
+                                            paid_at: editForm.paid_at,
+                                            paid_amount: parseFloat(editForm.paid_amount) || 0,
+                                            negotiated_discount_amount: parseFloat(editForm.negotiated_discount_amount) || 0,
+                                            method: editForm.method,
+                                            note: editForm.note
+                                        }));
+                                    }
+                                }}
                                 disabled={editSubmitting}
                                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all disabled:opacity-50 flex items-center gap-2"
                             >

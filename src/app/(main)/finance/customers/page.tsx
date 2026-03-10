@@ -79,6 +79,21 @@ export default function FinanceCustomersPage() {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState<Partial<Receivable>>({});
     const [saveLoading, setSaveLoading] = useState(false);
+    const [userRole, setUserRole] = useState<string>('');
+
+    // Fetch user role
+    useEffect(() => {
+        fetch('/api/auth/me')
+            .then(res => res.json())
+            .then(data => {
+                if (data.user) {
+                    setUserRole(data.user.role || '');
+                }
+            })
+            .catch(console.error);
+    }, []);
+
+    const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin';
 
     const handleSaveEdit = async () => {
         if (!selectedItem || !editData) return;
@@ -581,14 +596,15 @@ export default function FinanceCustomersPage() {
                             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                 <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-200 flex justify-between items-center">
                                     <h3 className="text-sm font-semibold text-slate-800">业务 & 收费详情</h3>
-                                    {!isEditing ? (
+                                    {isManagerOrAdmin && !isEditing && (
                                         <button
                                             onClick={() => setIsEditing(true)}
                                             className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded text-xs font-medium transition"
                                         >
                                             编辑
                                         </button>
-                                    ) : (
+                                    )}
+                                    {isEditing && (
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => setIsEditing(false)}

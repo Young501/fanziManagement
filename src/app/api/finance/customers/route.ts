@@ -151,6 +151,13 @@ export async function GET(request: NextRequest) {
             });
         }
 
+        // Finally, sort by payment_due_date ASC so the ones closest to today are at the top
+        filteredData.sort((a, b) => {
+            const da = a.payment_due_date ? new Date(a.payment_due_date).getTime() : Infinity;
+            const db = b.payment_due_date ? new Date(b.payment_due_date).getTime() : Infinity;
+            return da - db;
+        });
+
         const total = filteredData.length;
         const paginatedData = filteredData.slice(offset, offset + limit);
 

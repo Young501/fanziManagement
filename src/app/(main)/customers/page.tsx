@@ -49,6 +49,19 @@ export default function CustomersPage() {
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [userRole, setUserRole] = useState<string>('');
+
+    useEffect(() => {
+        fetch('/api/auth/me')
+            .then(res => res.json())
+            .then(data => {
+                const role = data.user?.role || data.role;
+                if (role) setUserRole(role);
+            })
+            .catch(console.error);
+    }, []);
+
+    const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin';
 
     const [stats, setStats] = useState<{ totalCustomers: number, monthlyChange: number, thisMonthCount: number, lastMonthCount: number } | null>(null);
     const [statsLoading, setStatsLoading] = useState(true);
@@ -82,6 +95,11 @@ export default function CustomersPage() {
     // Edit functionality states
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState<Partial<Customer>>({});
+
+    // Add Company Profile Edit States
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [editProfileData, setEditProfileData] = useState<any>({});
+
     const [saveLoading, setSaveLoading] = useState(false);
 
     const openCustomerDetails = useCallback((id: string) => {
@@ -90,6 +108,7 @@ export default function CustomersPage() {
         setDetailLoading(true);
         setDetailError(null);
         setIsEditing(false); // Reset edit state when opening a new customer
+        setIsEditingProfile(false); // Reset profile edit state
         fetch(`/api/customers/${id}`)
             .then(res => res.json())
             .then(res => {
@@ -119,6 +138,30 @@ export default function CustomersPage() {
             setIsEditing(false);
             openCustomerDetails(selectedCustomerId);
             fetchCustomers();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSaveLoading(false);
+        }
+    };
+
+    const handleSaveProfile = async () => {
+        if (!selectedCustomerId || !editProfileData) return;
+        setSaveLoading(true);
+        try {
+            const res = await fetch(`/api/customers/${selectedCustomerId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyProfile: editProfileData }),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || '保存公司画像失败');
+            }
+
+            // Refresh detail data
+            setIsEditingProfile(false);
+            openCustomerDetails(selectedCustomerId);
         } catch (err: any) {
             alert(err.message);
         } finally {
@@ -592,29 +635,34 @@ export default function CustomersPage() {
                                                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                                                             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                                                 <h2 className="text-lg font-semibold text-slate-800">基础业务档案</h2>
-                                                                {!isEditing ? (
-                                                                    <button
-                                                                        onClick={() => setIsEditing(true)}
-                                                                        className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition"
-                                                                    >
-                                                                        编辑
-                                                                    </button>
-                                                                ) : (
-                                                                    <div className="flex gap-2">
+                                                                {isManagerOrAdmin && (
+                                                                    !isEditing ? (
                                                                         <button
-                                                                            onClick={() => { setIsEditing(false); setEditData(detailData.customer); }}
-                                                                            className="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition"
+                                                                            onClick={() => {
+                                                                                setEditData(detailData.customer || {});
+                                                                                setIsEditing(true);
+                                                                            }}
+                                                                            className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition"
                                                                         >
-                                                                            取消
+                                                                            编辑
                                                                         </button>
-                                                                        <button
-                                                                            onClick={handleSaveEdit}
-                                                                            disabled={saveLoading}
-                                                                            className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium transition disabled:opacity-50"
-                                                                        >
-                                                                            {saveLoading ? '保存中...' : '保存'}
-                                                                        </button>
-                                                                    </div>
+                                                                    ) : (
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                onClick={() => { setIsEditing(false); setEditData(detailData.customer); }}
+                                                                                className="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition"
+                                                                            >
+                                                                                取消
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={handleSaveEdit}
+                                                                                disabled={saveLoading}
+                                                                                className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium transition disabled:opacity-50"
+                                                                            >
+                                                                                {saveLoading ? '保存中...' : '保存'}
+                                                                            </button>
+                                                                        </div>
+                                                                    )
                                                                 )}
                                                             </div>
                                                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -716,14 +764,18 @@ export default function CustomersPage() {
                                                                 <div>
                                                                     <label className="block text-sm font-medium text-slate-500 mb-1">客服经理</label>
                                                                     {isEditing ? (
-                                                                        <input
-                                                                            type="text"
-                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                        <select
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm bg-white"
                                                                             value={editData.service_manager || ''}
                                                                             onChange={e => setEditData({ ...editData, service_manager: e.target.value })}
-                                                                        />
+                                                                        >
+                                                                            <option value="">请选择负责人</option>
+                                                                            {serviceManagers.map(m => (
+                                                                                <option key={m} value={m}>{m}</option>
+                                                                            ))}
+                                                                        </select>
                                                                     ) : (
-                                                                        <div className="text-slate-800">{detailData.customer.service_manager}</div>
+                                                                        <div className="text-slate-800">{detailData.customer.service_manager || '未指定'}</div>
                                                                     )}
                                                                 </div>
                                                             </div>
@@ -734,28 +786,102 @@ export default function CustomersPage() {
                                                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                                                             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                                                 <h2 className="text-lg font-semibold text-slate-800">公司画像</h2>
+                                                                {isManagerOrAdmin && (
+                                                                    !isEditingProfile ? (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditProfileData(detailData.companyProfile || {});
+                                                                                setIsEditingProfile(true);
+                                                                            }}
+                                                                            className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition"
+                                                                        >
+                                                                            {detailData.companyProfile ? '编辑画像' : '完善画像'}
+                                                                        </button>
+                                                                    ) : (
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                onClick={() => { setIsEditingProfile(false); setEditProfileData(detailData.companyProfile || {}); }}
+                                                                                className="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition"
+                                                                            >
+                                                                                取消
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={handleSaveProfile}
+                                                                                disabled={saveLoading}
+                                                                                className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium transition disabled:opacity-50"
+                                                                            >
+                                                                                {saveLoading ? '保存中...' : '保存'}
+                                                                            </button>
+                                                                        </div>
+                                                                    )
+                                                                )}
                                                             </div>
-                                                            {detailData.companyProfile ? (
+                                                            {detailData.companyProfile || isEditingProfile ? (
                                                                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                                                                     <div>
                                                                         <label className="block text-sm font-medium text-slate-500 mb-1">统一社会信用代码</label>
-                                                                        <div className="text-slate-800">{detailData.companyProfile.credit_code || '未填写'}</div>
+                                                                        {isEditingProfile ? (
+                                                                            <input
+                                                                                type="text"
+                                                                                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                                value={editProfileData.credit_code || ''}
+                                                                                onChange={e => setEditProfileData({ ...editProfileData, credit_code: e.target.value })}
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="text-slate-800">{detailData.companyProfile?.credit_code || '未填写'}</div>
+                                                                        )}
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-sm font-medium text-slate-500 mb-1">法定代表人</label>
-                                                                        <div className="text-slate-800">{detailData.companyProfile.legal_representative || '未填写'}</div>
+                                                                        {isEditingProfile ? (
+                                                                            <input
+                                                                                type="text"
+                                                                                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                                value={editProfileData.legal_representative || ''}
+                                                                                onChange={e => setEditProfileData({ ...editProfileData, legal_representative: e.target.value })}
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="text-slate-800">{detailData.companyProfile?.legal_representative || '未填写'}</div>
+                                                                        )}
                                                                     </div>
                                                                     <div>
-                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">注册资本</label>
-                                                                        <div className="text-slate-800">{detailData.companyProfile.registered_capital ? `${detailData.companyProfile.registered_capital}万元` : '未填写'}</div>
+                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">注册资本(万元)</label>
+                                                                        {isEditingProfile ? (
+                                                                            <input
+                                                                                type="number"
+                                                                                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                                value={editProfileData.registered_capital || ''}
+                                                                                onChange={e => setEditProfileData({ ...editProfileData, registered_capital: e.target.value ? Number(e.target.value) : null })}
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="text-slate-800">{detailData.companyProfile?.registered_capital ? `${detailData.companyProfile.registered_capital}万元` : '未填写'}</div>
+                                                                        )}
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-sm font-medium text-slate-500 mb-1">成立日期</label>
-                                                                        <div className="text-slate-800">{detailData.companyProfile.establishment_date || '未填写'}</div>
+                                                                        {isEditingProfile ? (
+                                                                            <input
+                                                                                type="date"
+                                                                                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                                value={editProfileData.establishment_date || ''}
+                                                                                onChange={e => setEditProfileData({ ...editProfileData, establishment_date: e.target.value })}
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="text-slate-800">{detailData.companyProfile?.establishment_date || '未填写'}</div>
+                                                                        )}
                                                                     </div>
                                                                     <div className="md:col-span-2">
                                                                         <label className="block text-sm font-medium text-slate-500 mb-1">经营范围</label>
-                                                                        <div className="text-slate-800 text-sm whitespace-pre-wrap">{detailData.companyProfile.business_scope || '未填写'}</div>
+                                                                        {isEditingProfile ? (
+                                                                            <textarea
+                                                                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                                                                rows={4}
+                                                                                value={editProfileData.business_scope || ''}
+                                                                                onChange={e => setEditProfileData({ ...editProfileData, business_scope: e.target.value })}
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="text-slate-800 text-sm whitespace-pre-wrap">{detailData.companyProfile?.business_scope || '未填写'}</div>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             ) : (
@@ -763,7 +889,17 @@ export default function CustomersPage() {
                                                                     <Building2 className="w-12 h-12 mb-4 text-slate-300" />
                                                                     <h3 className="text-lg font-medium text-slate-800 mb-2">暂无公司画像</h3>
                                                                     <p className="mb-4">该客户尚未建立公司画像，如工商、税务等详细信息。</p>
-                                                                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">建立公司画像</button>
+                                                                    {isManagerOrAdmin && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditProfileData({});
+                                                                                setIsEditingProfile(true);
+                                                                            }}
+                                                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                                                                        >
+                                                                            建立公司画像
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -773,7 +909,9 @@ export default function CustomersPage() {
                                                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                                                             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                                                 <h2 className="text-lg font-semibold text-slate-800">股东与高管</h2>
-                                                                <button className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition">添加股东</button>
+                                                                {isManagerOrAdmin && (
+                                                                    <button className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition">添加股东</button>
+                                                                )}
                                                             </div>
                                                             {detailData.shareholders?.length > 0 ? (
                                                                 <div className="divide-y divide-slate-100">
