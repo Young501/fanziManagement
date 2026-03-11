@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search, FileText, Filter, X, ChevronLeft, ChevronRight, Wallet, BadgeAlert, TrendingUp, Calendar, AlertCircle, CheckCircle2, Banknote } from 'lucide-react';
 
 // City prefixes to skip when picking avatar character
@@ -80,6 +81,7 @@ export default function FinanceCustomersPage() {
     const [editData, setEditData] = useState<Partial<Receivable>>({});
     const [saveLoading, setSaveLoading] = useState(false);
     const [userRole, setUserRole] = useState<string>('');
+    const router = useRouter();
 
     // Fetch user role
     useEffect(() => {
@@ -552,9 +554,9 @@ export default function FinanceCustomersPage() {
                     <div className="relative bg-slate-50 w-full sm:w-[540px] h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 overflow-hidden">
 
                         {/* Header Area */}
-                        <div className="px-6 py-6 bg-white border-b border-slate-200 flex justify-between items-start relative overflow-hidden">
+                        <div className="px-6 py-6 bg-white border-b border-slate-200 flex gap-4 justify-between items-start relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
-                            <div className="relative z-10 pr-8">
+                            <div className="relative z-10 pr-4">
                                 <h2 className="text-xl font-bold text-slate-900 leading-tight flex items-center gap-2">
                                     {selectedItem.customers?.company_name}
                                 </h2>
@@ -563,9 +565,18 @@ export default function FinanceCustomersPage() {
                                     <span>系统状态: <span className="font-semibold text-slate-700">{selectedItem.status}</span></span>
                                 </p>
                             </div>
-                            <button onClick={() => setSelectedItem(null)} className="relative z-10 text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full p-2 transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
+                            <div className="flex items-center gap-2 relative z-10 flex-shrink-0">
+                                <button
+                                    onClick={() => router.push(`/finance/payment?customer_name=${encodeURIComponent(selectedItem.customers?.company_name || '')}`)}
+                                    className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 shadow-sm"
+                                >
+                                    <Wallet className="w-4 h-4" />
+                                    去收款
+                                </button>
+                                <button onClick={() => setSelectedItem(null)} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full p-2 transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Scroll Content */}
