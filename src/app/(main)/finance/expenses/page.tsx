@@ -658,7 +658,7 @@ function ExpenseHistoryContent() {
                                                 ) : <span className="text-slate-300">-</span>}
                                             </td>
                                             <td className="py-4 px-4 text-center">
-                                                {role === 'admin' && (
+                                                {role?.toLowerCase() === 'admin' && (
                                                     <button onClick={() => handleDelete(item.id)} disabled={deleteLoading === item.id} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="删除记录">
                                                         {deleteLoading === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                                     </button>

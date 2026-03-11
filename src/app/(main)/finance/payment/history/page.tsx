@@ -505,7 +505,7 @@ export default function PaymentHistoryPage() {
                             </div>
 
                             {/* Actions Grouped */}
-                            {(role === 'admin' || role === 'manager') && (
+                            {(role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'manager') && (
                                 <div className="pt-4 border-t border-slate-100 flex flex-wrap gap-3">
                                     <button
                                         onClick={() => {

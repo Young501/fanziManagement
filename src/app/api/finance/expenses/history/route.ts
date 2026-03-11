@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const role = await getRole();
-        if (role !== 'admin') {
+        if (role?.toLowerCase() !== 'admin') {
             return NextResponse.json({ error: '权限不足，仅管理员可删除' }, { status: 403 });
         }
 

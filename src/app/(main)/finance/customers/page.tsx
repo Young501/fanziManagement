@@ -93,7 +93,7 @@ export default function FinanceCustomersPage() {
             .catch(console.error);
     }, []);
 
-    const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin';
+    const isManagerOrAdmin = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'admin';
 
     const handleSaveEdit = async () => {
         if (!selectedItem || !editData) return;

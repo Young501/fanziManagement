@@ -1595,7 +1595,7 @@ function PaymentHistoryContent() {
                                             )}
                                         </td>
                                         <td className="py-4 px-4 text-center">
-                                            {role === 'admin' && (
+                                            {role?.toLowerCase() === 'admin' && (
                                                 <div className="flex items-center justify-center gap-1">
                                                     <button
                                                         onClick={() => openEdit(item)}

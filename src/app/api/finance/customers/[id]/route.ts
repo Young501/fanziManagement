@@ -1,4 +1,4 @@
-﻿import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -43,12 +43,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         const { data: profile } = await supabase
-            .from('user_profiles')
+            .from('profiles')
             .select('role')
             .eq('id', user.id)
             .single();
 
-        if (profile?.role !== 'admin' && profile?.role !== 'manager') {
+        if (profile?.role?.toLowerCase() !== 'admin' && profile?.role?.toLowerCase() !== 'manager') {
             return noStoreJson({ error: 'Forbidden: Admin or Manager role required' }, 403);
         }
 

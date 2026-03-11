@@ -67,7 +67,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         if (id) fetchCustomer();
     }, [id]);
 
-    const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin';
+    const isManagerOrAdmin = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'admin';
 
     const handleSaveBasic = async () => {
         setIsSaving(true);

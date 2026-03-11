@@ -1,7 +1,15 @@
 export const dynamic = 'force-dynamic';
 
-import { Database, Users, ArrowUpRight, Activity } from 'lucide-react';
+import { Database, Users, ArrowUpRight, Activity, TrendingUp, TrendingDown } from 'lucide-react';
 import { createClient } from '@/utils/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+
+function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 function formatDate(dateStr: string) {
   if (!dateStr) return '';
@@ -14,17 +22,21 @@ export default async function Home() {
   const { data: { user } } = await serverClient.auth.getUser();
 
   let adminName = 'Admin';
+  let userRole = 'employee';
   if (user) {
     const { data: profile } = await serverClient
       .from('profiles')
-      .select('full_name')
+      .select('full_name, role')
       .eq('id', user.id)
       .single();
 
-    if (profile?.full_name) {
-      adminName = profile.full_name.charAt(0) + '经理';
-    } else if (user.email) {
-      adminName = user.email.charAt(0).toUpperCase() + '经理';
+    if (profile) {
+      userRole = profile.role || 'employee';
+      if (profile.full_name) {
+        adminName = profile.full_name.charAt(0) + '经理';
+      } else if (user.email) {
+        adminName = user.email.charAt(0).toUpperCase() + '经理';
+      }
     }
   }
 
@@ -120,6 +132,28 @@ export default async function Home() {
     .order('churn_date', { ascending: false })
     .limit(5);
 
+  const yearStart = `${now.getFullYear()}-01-01`;
+
+  // 6. This year's financials (conditionally fetched based on role)
+  let totalCollectedThisYear = 0;
+  let totalSpentThisYear = 0;
+  const canViewFinancials = userRole === 'admin' || userRole === 'manager';
+
+  if (canViewFinancials) {
+    const { data: thisYearPayments } = await serverClient
+      .from('payment_records')
+      .select('paid_amount')
+      .gte('paid_at', yearStart);
+    totalCollectedThisYear = (thisYearPayments || []).reduce((sum, r) => sum + Number(r.paid_amount || 0), 0);
+
+    const supabaseAdmin = createAdminClient();
+    const { data: thisYearExpenses } = await supabaseAdmin
+      .from('expense_records')
+      .select('expense_amount')
+      .gte('expense_date', yearStart);
+    totalSpentThisYear = (thisYearExpenses || []).reduce((sum, r) => sum + Number(r.expense_amount || 0), 0);
+  }
+
   const stats = [
     { name: '总客户数', value: totalCustomers || 0, change: '实时', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
     { name: '本月新增客户', value: thisMonthNewCustomers || 0, change: '实时', icon: Activity, color: 'text-indigo-600', bg: 'bg-indigo-50' },
@@ -169,6 +203,58 @@ export default async function Home() {
           );
         })}
       </div>
+
+      {/* Financial Summary Bar (Only visible to admin/manager) */}
+      {canViewFinancials && (
+        <div className="flex flex-col md:flex-row bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+          <div className="flex-1 p-6 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-1/4 -translate-y-1/4 transition-transform group-hover:scale-110 group-hover:-translate-y-1/3">
+              <TrendingUp className="w-32 h-32 text-emerald-600" />
+            </div>
+            <div className="relative z-10 flex items-center space-x-5">
+              <div className="p-3.5 bg-emerald-50 rounded-xl ring-1 ring-emerald-100">
+                <TrendingUp className="w-6 h-6 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-slate-500 text-sm font-medium mb-1">今年已收款</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight text-slate-900">
+                    ¥{totalCollectedThisYear.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    全年计
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-px bg-slate-100 hidden md:block"></div>
+          <div className="h-px bg-slate-100 md:hidden block"></div>
+
+          <div className="flex-1 p-6 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-1/4 -translate-y-1/4 transition-transform group-hover:scale-110 group-hover:-translate-y-1/3">
+              <TrendingDown className="w-32 h-32 text-rose-600" />
+            </div>
+            <div className="relative z-10 flex items-center space-x-5">
+              <div className="p-3.5 bg-rose-50 rounded-xl ring-1 ring-rose-100">
+                <TrendingDown className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <p className="text-slate-500 text-sm font-medium mb-1">今年已支出</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight text-slate-900">
+                    ¥{totalSpentThisYear.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-xs font-medium text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
+                    全年计
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main content grid area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

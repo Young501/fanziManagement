@@ -1027,7 +1027,7 @@ export default function NewCustomerPage() {
                                                             {record.customer_type}
                                                         </td>
                                                         <td className="px-6 py-4 text-right">
-                                                            {userRole === 'admin' && (
+                                                            {userRole?.toLowerCase() === 'admin' && (
                                                                 <button
                                                                     onClick={() => handleDelete(record.id)}
                                                                     className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"

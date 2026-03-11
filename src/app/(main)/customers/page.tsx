@@ -61,7 +61,7 @@ export default function CustomersPage() {
             .catch(console.error);
     }, []);
 
-    const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin';
+    const isManagerOrAdmin = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'admin';
 
     const [stats, setStats] = useState<{ totalCustomers: number, monthlyChange: number, thisMonthCount: number, lastMonthCount: number } | null>(null);
     const [statsLoading, setStatsLoading] = useState(true);
