@@ -20,6 +20,7 @@ export async function updateSession(request: NextRequest) {
                         request,
                     })
                     cookiesToSet.forEach(({ name, value, options }) => {
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         const { maxAge, expires, ...sessionOptions } = options
                         supabaseResponse.cookies.set(name, value, sessionOptions)
                     })

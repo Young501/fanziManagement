@@ -182,11 +182,45 @@ export async function POST(request: NextRequest) {
 
         // 5. Initial Payment Processing
         if (paymentInfo.has_paid) {
-            // Create payment record
+            const pCycle = parseInt(pay_cycle_months || '0', 10);
+            const eDate = new Date(effective_date);
+            
+            // Calculate first cycle end date
+            const firstCycleEnd = new Date(eDate);
+            firstCycleEnd.setMonth(firstCycleEnd.setMonth(firstCycleEnd.getMonth() + (pCycle > 0 ? pCycle : 1)));
+            firstCycleEnd.setDate(firstCycleEnd.getDate() - 1);
+
+            // A. Create first receivable (already paid)
+            const { data: firstRec, error: firstRecErr } = await supabase
+                .from('company_receivables')
+                .insert({
+                    customer_id: customerId,
+                    status: 'paid',
+                    payment_due_date: effective_date,
+                    contract_end_date: firstCycleEnd.toISOString().split('T')[0],
+                    amount_payable_period: standard_price ? parseFloat(standard_price) : 0,
+                    amount_paid_period: parseFloat(paymentInfo.paid_amount),
+                    standard_price: standard_price ? parseFloat(standard_price) : 0,
+                    billing_fee_month: billing_fee_month ? parseFloat(billing_fee_month) : null,
+                    pay_cycle_months: pCycle,
+                    has_contract: has_contract,
+                    note: '新客户建档自带首期款项结清',
+                    current_receipt_date: paymentInfo.paid_at,
+                    current_receipt_amount: parseFloat(paymentInfo.paid_amount)
+                })
+                .select('id')
+                .single();
+
+            if (firstRecErr) {
+                console.error('[customers/new API] First receivable insert error:', firstRecErr);
+            }
+
+            // B. Create payment record linked to the first receivable
             const { data: payRecord, error: payError } = await supabase
                 .from('payment_records')
                 .insert({
                     customer_id: customerId,
+                    receivable_id: firstRec?.id || null, // Link to the newly created receivable
                     paid_amount: parseFloat(paymentInfo.paid_amount),
                     paid_at: paymentInfo.paid_at,
                     method: paymentInfo.method,
@@ -196,11 +230,8 @@ export async function POST(request: NextRequest) {
                 .single();
 
             if (!payError && payRecord) {
-                // Determine next billing period if there's a pay cycle
-                const pCycle = parseInt(pay_cycle_months || '0', 10);
+                // C. Determine next billing period if there's a pay cycle
                 if (pCycle > 0) {
-                    const eDate = new Date(effective_date);
-
                     const nextCycleStart = new Date(eDate);
                     nextCycleStart.setMonth(nextCycleStart.getMonth() + pCycle);
 
@@ -211,7 +242,7 @@ export async function POST(request: NextRequest) {
                     const nextDueDate = new Date(nextCycleStart);
                     nextDueDate.setDate(nextDueDate.getDate() - 1);
 
-                    // Generate receivable for the NEXT cycle, as they paid the first one
+                    // Generate receivable for the NEXT cycle
                     await supabase
                         .from('company_receivables')
                         .insert({

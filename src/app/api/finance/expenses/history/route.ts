@@ -97,8 +97,8 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const role = await getRole();
-        if (role?.toLowerCase() !== 'admin') {
-            return NextResponse.json({ error: '权限不足，仅管理员可删除' }, { status: 403 });
+        if (role?.toLowerCase() !== 'admin' && role?.toLowerCase() !== 'manager') {
+            return NextResponse.json({ error: '权限不足，仅管理员或客户经理可删除' }, { status: 403 });
         }
 
         const { searchParams } = new URL(request.url);
@@ -117,6 +117,55 @@ export async function DELETE(request: NextRequest) {
         const { error } = await supabase
             .from('expense_records')
             .delete()
+            .eq('id', id);
+
+        if (error) {
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (err: any) {
+        return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
+    }
+}
+
+export async function PATCH(request: NextRequest) {
+    try {
+        const role = await getRole();
+        if (role?.toLowerCase() !== 'admin' && role?.toLowerCase() !== 'manager') {
+            return NextResponse.json({ error: '权限不足，仅管理员或客户经理可修改' }, { status: 403 });
+        }
+
+        const body = await request.json();
+        const {
+            id,
+            expense_date,
+            expense_amount,
+            expense_category,
+            expense_type,
+            vendor_name,
+            payment_method,
+            note
+        } = body;
+
+        if (!id) {
+            return NextResponse.json({ error: '缺失记录ID' }, { status: 400 });
+        }
+
+        const supabase = createAdminClient();
+
+        const updates: any = {};
+        if (expense_date !== undefined) updates.expense_date = expense_date;
+        if (expense_amount !== undefined) updates.expense_amount = parseFloat(expense_amount);
+        if (expense_category !== undefined) updates.expense_category = expense_category;
+        if (expense_type !== undefined) updates.expense_type = expense_type;
+        if (vendor_name !== undefined) updates.vendor_name = vendor_name;
+        if (payment_method !== undefined) updates.payment_method = payment_method;
+        if (note !== undefined) updates.note = note;
+
+        const { error } = await supabase
+            .from('expense_records')
+            .update(updates)
             .eq('id', id);
 
         if (error) {

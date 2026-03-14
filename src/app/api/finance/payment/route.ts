@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
                 paid_at,
                 paid_amount: amount,
                 method: method || null,
-                note: `[一次性收款] ${ad_hoc_service_name}${note ? ' - ' + note : ''}`,
+                note: note ? `${ad_hoc_service_name} - ${note}` : ad_hoc_service_name,
                 screenshot: screenshot || null,
             });
 

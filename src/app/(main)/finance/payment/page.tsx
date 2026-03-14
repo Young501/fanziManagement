@@ -1544,7 +1544,7 @@ function PaymentHistoryContent() {
                                 <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">优惠金额</th>
                                 <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">收款方式</th>
                                 <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">类型</th>
-                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">凭证</th>
+                                <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider">备注</th>
                                 <th className="py-3 px-4 text-center font-semibold text-slate-600 uppercase tracking-wider w-20">操作</th>
                             </tr>
                         </thead>
@@ -1564,7 +1564,9 @@ function PaymentHistoryContent() {
                                 data.map((item) => (
                                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                         <td className="py-4 px-4 text-slate-500 whitespace-nowrap text-center">{item.paid_at}</td>
-                                        <td className="py-4 px-4 font-medium text-slate-900 text-center">{item.customers?.company_name || '未知客户'}</td>
+                                        <td className="py-4 px-4 font-medium text-slate-900 text-center">
+                                            {item.customers?.company_name || (!item.receivable_id ? '一次性收款' : '未知客户')}
+                                        </td>
                                         <td className="py-4 px-4 text-center font-bold text-emerald-600 font-mono">{formatCurrency(item.paid_amount)}</td>
                                         <td className="py-4 px-4 text-center">
                                             {item.negotiated_discount_amount > 0 ? (
@@ -1575,21 +1577,20 @@ function PaymentHistoryContent() {
                                         </td>
                                         <td className="py-4 px-4 text-slate-600 text-center">{item.method || '-'}</td>
                                         <td className="py-4 px-4 text-center">
-                                            {item.company_receivables?.billing_fee_month ? (
-                                                <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs">月费收款</span>
+                                            {item.receivable_id ? (
+                                                <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs">常规/月费收款</span>
                                             ) : (
                                                 <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-xs">一次性收款</span>
                                             )}
                                         </td>
-                                        <td className="py-4 px-4 text-center">
-                                            {item.screenshot ? (
-                                                <button
-                                                    onClick={() => setPreviewImage(item.screenshot)}
-                                                    className="p-1.5 bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all mx-auto"
-                                                    title="查看凭证"
+                                        <td className="py-4 px-4 text-center max-w-[160px]">
+                                            {item.note ? (
+                                                <span
+                                                    className="text-slate-600 text-xs truncate block max-w-[140px] mx-auto"
+                                                    title={item.note}
                                                 >
-                                                    <ImageIcon className="w-4 h-4" />
-                                                </button>
+                                                    {item.note.replace(/^\[一次性收款\]\s*/, '')}
+                                                </span>
                                             ) : (
                                                 <span className="text-slate-300">-</span>
                                             )}

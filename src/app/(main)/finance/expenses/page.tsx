@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import {
     Search, CheckCircle2, X, Calendar, Banknote, FileText, Loader2,
     ImagePlus, Image as ImageIcon, Trash2, CreditCard, Tag, Building2, ClipboardList,
-    AlertCircle, ExternalLink, History, TrendingDown, Filter
+    AlertCircle, ExternalLink, History, TrendingDown, Filter, Edit2, Eye
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
@@ -488,6 +488,22 @@ function ExpenseHistoryContent() {
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+    // Detail state
+    const [selectedDetail, setSelectedDetail] = useState<any | null>(null);
+    
+    // Edit state
+    const [editRecord, setEditRecord] = useState<any | null>(null);
+    const [editForm, setEditForm] = useState({
+        expense_date: '',
+        expense_amount: '',
+        expense_category: '',
+        expense_type: '',
+        vendor_name: '',
+        payment_method: '',
+        note: ''
+    });
+    const [editSubmitting, setEditSubmitting] = useState(false);
+
     const limit = 20;
 
     useEffect(() => { fetchData(); }, [page, selectedMonth, selectedCategory]);
@@ -529,6 +545,54 @@ function ExpenseHistoryContent() {
             alert(err.message);
         } finally {
             setDeleteLoading(null);
+        }
+    };
+
+    const openEdit = (record: any) => {
+        setEditRecord(record);
+        setEditForm({
+            expense_date: record.expense_date || '',
+            expense_amount: record.expense_amount?.toString() || '0',
+            expense_category: record.expense_category || '办公费',
+            expense_type: record.expense_type || '',
+            vendor_name: record.vendor_name || '',
+            payment_method: record.payment_method || '微信支付',
+            note: record.note || ''
+        });
+    };
+
+    const handleEditSubmit = async () => {
+        if (!editRecord) return;
+        setEditSubmitting(true);
+        try {
+            const res = await fetch(`/api/finance/expenses/history`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editRecord.id,
+                    ...editForm,
+                    expense_amount: parseFloat(editForm.expense_amount) || 0
+                })
+            });
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+
+            setData(prev => prev.map(item => {
+                if (item.id === editRecord.id) {
+                    return {
+                        ...item,
+                        ...editForm,
+                        expense_amount: parseFloat(editForm.expense_amount) || 0
+                    };
+                }
+                return item;
+            }));
+            setEditRecord(null);
+            fetchData();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setEditSubmitting(false);
         }
     };
 
@@ -658,11 +722,34 @@ function ExpenseHistoryContent() {
                                                 ) : <span className="text-slate-300">-</span>}
                                             </td>
                                             <td className="py-4 px-4 text-center">
-                                                {role?.toLowerCase() === 'admin' && (
-                                                    <button onClick={() => handleDelete(item.id)} disabled={deleteLoading === item.id} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="删除记录">
-                                                        {deleteLoading === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button 
+                                                        onClick={() => setSelectedDetail(item)} 
+                                                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" 
+                                                        title="查看详情"
+                                                    >
+                                                        <Eye className="w-4 h-4" />
                                                     </button>
-                                                )}
+                                                    {(role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'manager') && (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => openEdit(item)} 
+                                                                className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all" 
+                                                                title="修改记录"
+                                                            >
+                                                                <Edit2 className="w-4 h-4" />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleDelete(item.id)} 
+                                                                disabled={deleteLoading === item.id} 
+                                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" 
+                                                                title="删除记录"
+                                                            >
+                                                                {deleteLoading === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -698,6 +785,201 @@ function ExpenseHistoryContent() {
                         <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
                             <a href={previewImage} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-xl transition-all"><ExternalLink className="w-4 h-4" /> 查看原图</a>
                             <button onClick={() => setPreviewImage(null)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl transition-all border border-slate-200">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Detail Modal */}
+            {selectedDetail && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+                            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-blue-500" />
+                                费用明细详情
+                            </h3>
+                            <button onClick={() => setSelectedDetail(null)} className="p-2 hover:bg-slate-200 rounded-xl transition-colors text-slate-500">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <p className="text-xs text-slate-500">费用日期</p>
+                                    <p className="text-sm font-medium text-slate-900">{selectedDetail.expense_date}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs text-slate-500">费用金额</p>
+                                    <p className="text-sm font-bold text-red-600">{formatCurrency(selectedDetail.expense_amount)}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs text-slate-500">费用类别</p>
+                                    <p className="text-sm font-medium text-slate-900">{selectedDetail.expense_category}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs text-slate-500">费用类型</p>
+                                    <p className="text-sm font-medium text-slate-900">{selectedDetail.expense_type || '-'}</p>
+                                </div>
+                            </div>
+                            <div className="h-px bg-slate-100" />
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <p className="text-xs text-slate-500">关联客户</p>
+                                    <p className="text-sm font-medium text-slate-900">{selectedDetail.customers?.company_name || '未关联'}</p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <p className="text-xs text-slate-500">供应商/收款方</p>
+                                    <p className="text-sm font-medium text-slate-900">{selectedDetail.vendor_name || '-'}</p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <p className="text-xs text-slate-500">付款方式</p>
+                                    <p className="text-sm font-medium text-slate-900">{selectedDetail.payment_method || '-'}</p>
+                                </div>
+                            </div>
+                            {selectedDetail.note && (
+                                <div className="bg-slate-50 rounded-xl p-3">
+                                    <p className="text-xs text-slate-500 mb-1">备注说明</p>
+                                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedDetail.note}</p>
+                                </div>
+                            )}
+                            {selectedDetail.attachment && (
+                                <div className="space-y-2">
+                                    <p className="text-xs text-slate-500">费用凭证</p>
+                                    <div className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
+                                        <img 
+                                            src={selectedDetail.attachment} 
+                                            alt="凭证" 
+                                            className="w-full h-auto max-h-48 object-contain cursor-pointer"
+                                            onClick={() => setPreviewImage(selectedDetail.attachment)} 
+                                        />
+                                        <div className="p-2 border-t border-slate-200 flex justify-center">
+                                            <button 
+                                                onClick={() => setPreviewImage(selectedDetail.attachment)}
+                                                className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                                            >
+                                                <ExternalLink className="w-3 h-3" /> 点击放大查看
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                            <button 
+                                onClick={() => setSelectedDetail(null)}
+                                className="px-5 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all"
+                            >
+                                关闭
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Modal */}
+            {editRecord && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                                <Edit2 className="w-5 h-5 text-amber-500" />
+                                修改成本记录
+                            </h3>
+                            <button onClick={() => setEditRecord(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">费用日期</label>
+                                    <input 
+                                        type="date" 
+                                        value={editForm.expense_date} 
+                                        onChange={e => setEditForm(prev => ({ ...prev, expense_date: e.target.value }))}
+                                        className="w-full rounded-lg border border-slate-200 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                                    />
+                                </div>
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">费用金额</label>
+                                    <div className="relative">
+                                        <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">¥</span>
+                                        <input 
+                                            type="number" 
+                                            step="0.01" 
+                                            value={editForm.expense_amount} 
+                                            onChange={e => setEditForm(prev => ({ ...prev, expense_amount: e.target.value }))}
+                                            className="w-full rounded-lg border border-slate-200 py-2 pl-7 pr-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none font-mono"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">费用类别</label>
+                                    <select 
+                                        value={editForm.expense_category} 
+                                        onChange={e => setEditForm(prev => ({ ...prev, expense_category: e.target.value }))}
+                                        className="w-full rounded-lg border border-slate-200 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none bg-white"
+                                    >
+                                        {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">费用类型</label>
+                                    <input 
+                                        type="text" 
+                                        value={editForm.expense_type} 
+                                        onChange={e => setEditForm(prev => ({ ...prev, expense_type: e.target.value }))}
+                                        className="w-full rounded-lg border border-slate-200 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">供应商/收款方</label>
+                                    <input 
+                                        type="text" 
+                                        value={editForm.vendor_name} 
+                                        onChange={e => setEditForm(prev => ({ ...prev, vendor_name: e.target.value }))}
+                                        className="w-full rounded-lg border border-slate-200 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                                    />
+                                </div>
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">付款方式</label>
+                                    <select 
+                                        value={editForm.payment_method} 
+                                        onChange={e => setEditForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                                        className="w-full rounded-lg border border-slate-200 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none bg-white"
+                                    >
+                                        {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">备注说明</label>
+                                <textarea 
+                                    rows={3}
+                                    value={editForm.note} 
+                                    onChange={e => setEditForm(prev => ({ ...prev, note: e.target.value }))}
+                                    className="w-full rounded-lg border border-slate-200 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none resize-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                            <button 
+                                onClick={() => setEditRecord(null)}
+                                className="px-5 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-all"
+                            >
+                                取消
+                            </button>
+                            <button 
+                                onClick={handleEditSubmit}
+                                disabled={editSubmitting}
+                                className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {editSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                保存修改
+                            </button>
                         </div>
                     </div>
                 </div>
