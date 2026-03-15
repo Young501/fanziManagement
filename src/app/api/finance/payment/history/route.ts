@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
         // Use !inner join when searching to allow filtering by customer company name, 
         // otherwise use left join (default) to include records without customers (e.g. ad-hoc)
         const selectStr = search 
-            ? '*, customers!inner(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note)'
-            : '*, customers(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note)';
+            ? '*, customers!inner(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note), customer_ad_hoc_services(service_name, description)'
+            : '*, customers(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note), customer_ad_hoc_services(service_name, description)';
 
         let query = supabaseAdmin
             .from('payment_records')
@@ -223,6 +223,24 @@ export async function PATCH(request: NextRequest) {
 
         if (updateError) {
             return NextResponse.json({ error: updateError.message }, { status: 500 });
+        }
+
+        // Synchronize note with linked ad-hoc service
+        if (note !== undefined && oldRecord.ad_hoc_service_id) {
+            const updatesAdHoc: any = {};
+            // Split note into service_name and description if '-' is present
+            if (/(-|－)/.test(note)) {
+                const parts = note.split(/\s*[-－]\s*/);
+                updatesAdHoc.service_name = parts[0].trim();
+                updatesAdHoc.description = parts.slice(1).join(' - ').trim();
+            } else {
+                updatesAdHoc.description = note;
+            }
+
+            await supabase
+                .from('customer_ad_hoc_services')
+                .update(updatesAdHoc)
+                .eq('id', oldRecord.ad_hoc_service_id);
         }
 
         return NextResponse.json({ success: true });

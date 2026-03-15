@@ -107,10 +107,11 @@ export async function POST(request: NextRequest) {
             const { error: prErr } = await supabase.from('payment_records').insert({
                 customer_id: customer_id || null,
                 receivable_id: null,
+                ad_hoc_service_id: newAdHoc.id,
                 paid_at,
                 paid_amount: amount,
                 method: method || null,
-                note: note ? `${ad_hoc_service_name} - ${note}` : ad_hoc_service_name,
+                note: note || null,
                 screenshot: screenshot || null,
             });
 

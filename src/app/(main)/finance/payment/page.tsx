@@ -1600,7 +1600,18 @@ function PaymentHistoryContent() {
                                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                         <td className="py-4 px-4 text-slate-500 whitespace-nowrap text-center">{item.paid_at}</td>
                                         <td className="py-4 px-4 font-medium text-slate-900 text-center">
-                                            {item.customers?.company_name || (!item.receivable_id ? '一次性收款' : '未知客户')}
+                                            {item.customers?.company_name || (() => {
+                                                if (item.customer_ad_hoc_services?.service_name) {
+                                                    return `单次: ${item.customer_ad_hoc_services.service_name}`;
+                                                }
+                                                // Historical parsing for unlinked ad-hoc records
+                                                if (!item.receivable_id && item.note && /(-|－)/.test(item.note)) {
+                                                    const parts = item.note.split(/\s*[-－]\s*/);
+                                                    const serviceName = parts[0].replace(/^\[一次性收款\]\s*/, '').trim();
+                                                    if (serviceName) return `单次: ${serviceName}`;
+                                                }
+                                                return !item.receivable_id ? '一次性收款' : '未知客户';
+                                            })()}
                                         </td>
                                         <td className="py-4 px-4 text-center font-bold text-emerald-600 font-mono">{formatCurrency(item.paid_amount)}</td>
                                         <td className="py-4 px-4 text-center">
@@ -1619,16 +1630,42 @@ function PaymentHistoryContent() {
                                             )}
                                         </td>
                                         <td className="py-4 px-4 text-center max-w-[160px]">
-                                            {item.note ? (
-                                                <span
-                                                    className="text-slate-600 text-xs truncate block max-w-[140px] mx-auto"
-                                                    title={item.note}
-                                                >
-                                                    {item.note.replace(/^\[一次性收款\]\s*/, '')}
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-300">-</span>
-                                            )}
+                                            {(() => {
+                                                const hasCustomer = !!item.customers?.company_name;
+                                                let serviceName = item.customer_ad_hoc_services?.service_name;
+                                                let serviceDescription = item.customer_ad_hoc_services?.description;
+
+                                                // Fallback parsing for historical or missing links
+                                                if (!serviceName && !item.receivable_id && item.note && /(-|－)/.test(item.note)) {
+                                                    const parts = item.note.split(/\s*[-－]\s*/);
+                                                    serviceName = parts[0].replace(/^\[一次性收款\]\s*/, '').trim();
+                                                    serviceDescription = parts.slice(1).join(' - ');
+                                                }
+
+                                                let displayNote = '';
+                                                if (hasCustomer && !item.receivable_id) {
+                                                    // Linked Ad-hoc: show "service_name - description"
+                                                    displayNote = [serviceName, serviceDescription || item.note].filter(Boolean).join(' - ');
+                                                } else {
+                                                    // Unlinked Ad-hoc or Regular: show only description/note
+                                                    displayNote = serviceDescription || item.note || '';
+                                                }
+
+                                                if (displayNote) {
+                                                    const cleanNote = displayNote.replace(/^\[一次性收款\]\s*/, '').trim();
+                                                    if (cleanNote) {
+                                                        return (
+                                                            <span
+                                                                className="text-slate-600 text-xs truncate block max-w-[140px] mx-auto"
+                                                                title={cleanNote}
+                                                            >
+                                                                {cleanNote}
+                                                            </span>
+                                                        );
+                                                    }
+                                                }
+                                                return <span className="text-slate-300">-</span>;
+                                            })()}
                                         </td>
                                         <td className="py-4 px-4 text-center">
                                             {role?.toLowerCase() === 'admin' && (
