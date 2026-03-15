@@ -504,7 +504,7 @@ function ExpenseHistoryContent() {
     });
     const [editSubmitting, setEditSubmitting] = useState(false);
 
-    const limit = 20;
+    const limit = 10;
 
     useEffect(() => { fetchData(); }, [page, selectedMonth, selectedCategory]);
 

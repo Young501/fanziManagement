@@ -1,10 +1,10 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { LayoutGroup, motion } from 'framer-motion';
-import { Banknote, Briefcase, ChevronDown, ChevronRight, LayoutDashboard, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { Banknote, Briefcase, Building2, ChevronDown, ChevronRight, LayoutDashboard, ShieldCheck, type LucideIcon } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
 type NavItem = {
@@ -19,6 +19,13 @@ type NavItem = {
 
 const navItems: NavItem[] = [
     { name: '仪表盘', href: '/', icon: LayoutDashboard },
+    {
+        name: '公司核算',
+        icon: Building2,
+        subItems: [
+            { name: '股东分红', href: '/accounting/dividend' }
+        ]
+    },
     {
         name: '商务与客户',
         icon: Briefcase,

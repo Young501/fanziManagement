@@ -33,17 +33,22 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page') || '1');
-        const limit = parseInt(searchParams.get('limit') || '20');
+        const limit = parseInt(searchParams.get('limit') || '10');
         const start = (page - 1) * limit;
         const month = searchParams.get('month') || ''; // format: YYYY-MM
         const paymentType = searchParams.get('paymentType') || ''; // 'regular' | 'adhoc'
+        const search = searchParams.get('search') || '';
 
         // Build base query (paginated)
+        // Use !inner join when searching to allow filtering by customer company name, 
+        // otherwise use left join (default) to include records without customers (e.g. ad-hoc)
+        const selectStr = search 
+            ? '*, customers!inner(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note)'
+            : '*, customers(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note)';
+
         let query = supabaseAdmin
             .from('payment_records')
-            .select('*, customers(company_name), company_receivables(billing_fee_month, pay_cycle_months, receipt_note)', { count: 'exact' })
-            .order('paid_at', { ascending: false })
-            .order('created_at', { ascending: false });
+            .select(selectStr, { count: 'exact' });
 
         // Apply month filter (paid_at is a date string)
         if (month) {
@@ -56,13 +61,20 @@ export async function GET(request: NextRequest) {
         }
 
         // Apply payment type filter
-        // 'regular' = has a receivable_id (linked to company_receivables)
-        // 'adhoc'   = receivable_id is null
         if (paymentType === 'regular') {
             query = query.not('receivable_id', 'is', null);
         } else if (paymentType === 'adhoc') {
             query = query.is('receivable_id', null);
         }
+
+        // Apply customer search filter
+        if (search) {
+            query = query.ilike('customers.company_name', `%${search}%`);
+        }
+
+        // Apply ordering
+        query = query.order('paid_at', { ascending: false })
+            .order('created_at', { ascending: false });
 
         const { data, count, error } = await query.range(start, start + limit - 1);
 
@@ -71,9 +83,13 @@ export async function GET(request: NextRequest) {
         }
 
         // Compute total sum for the filtered dataset (no pagination)
+        const totalSelect = search 
+            ? 'paid_amount, customers!inner(company_name)'
+            : 'paid_amount, customers(company_name)';
+
         let totalQuery = supabaseAdmin
             .from('payment_records')
-            .select('paid_amount');
+            .select(totalSelect);
 
         if (month) {
             const [year, mon] = month.split('-');
@@ -87,6 +103,9 @@ export async function GET(request: NextRequest) {
             totalQuery = totalQuery.not('receivable_id', 'is', null);
         } else if (paymentType === 'adhoc') {
             totalQuery = totalQuery.is('receivable_id', null);
+        }
+        if (search) {
+            totalQuery = totalQuery.ilike('customers.company_name', `%${search}%`);
         }
 
         const { data: totalData } = await totalQuery;

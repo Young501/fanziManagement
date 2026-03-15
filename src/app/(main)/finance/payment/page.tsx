@@ -1344,6 +1344,7 @@ function PaymentHistoryContent() {
     const [page, setPage] = useState(1);
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedType, setSelectedType] = useState('全部'); // 全部, regular, adhoc
+    const [search, setSearch] = useState('');
     const [role, setRole] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
@@ -1360,11 +1361,14 @@ function PaymentHistoryContent() {
     });
     const [editSubmitting, setEditSubmitting] = useState(false);
 
-    const limit = 20;
+    const limit = 10;
 
     useEffect(() => {
-        fetchData();
-    }, [page, selectedMonth, selectedType]);
+        const timer = setTimeout(() => {
+            fetchData();
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [page, selectedMonth, selectedType, search]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -1373,6 +1377,7 @@ function PaymentHistoryContent() {
             if (selectedMonth) url += `&month=${selectedMonth}`;
             if (selectedType === 'regular') url += `&paymentType=regular`;
             if (selectedType === 'adhoc') url += `&paymentType=adhoc`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
 
             const res = await fetch(url);
             const json = await res.json();
@@ -1507,7 +1512,7 @@ function PaymentHistoryContent() {
                         <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
 
                         {/* Type Filter */}
-                        <div className="flex items-center gap-2 flex-1">
+                        <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">收款类型</span>
                             <select
                                 value={selectedType}
@@ -1521,6 +1526,36 @@ function PaymentHistoryContent() {
                                 <option value="regular">常规账单</option>
                                 <option value="adhoc">一次性收款</option>
                             </select>
+                        </div>
+
+                        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+                        {/* Customer Name Search */}
+                        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                            <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">搜客户</span>
+                            <div className="relative flex-1">
+                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                    <Search className="h-4 w-4 text-slate-400" />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="输入客户名称关键词..."
+                                    className="block w-full rounded-xl border border-slate-200 py-1.5 pl-10 pr-4 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-600 outline-none sm:text-sm transition-all"
+                                    value={search}
+                                    onChange={(e) => {
+                                        setSearch(e.target.value);
+                                        setPage(1);
+                                    }}
+                                />
+                                {search && (
+                                    <button
+                                        onClick={() => { setSearch(''); setPage(1); }}
+                                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
