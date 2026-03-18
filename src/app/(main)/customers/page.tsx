@@ -732,6 +732,24 @@ export default function CustomersPage() {
                                                                     )}
                                                                 </div>
                                                                 <div>
+                                                                    <label className="block text-sm font-medium text-slate-500 mb-1">客户类型</label>
+                                                                    {isEditing ? (
+                                                                        <select
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm bg-white"
+                                                                            value={editData.customer_type || ''}
+                                                                            onChange={e => setEditData({ ...editData, customer_type: e.target.value })}
+                                                                        >
+                                                                            <option value="">请选择客户类型</option>
+                                                                            <option value="一般纳税人">一般纳税人</option>
+                                                                            <option value="小规模纳税人">小规模纳税人</option>
+                                                                            <option value="个人独资企业">个人独资企业</option>
+                                                                            <option value="个体户">个体户</option>
+                                                                         </select>
+                                                                    ) : (
+                                                                        <div className="text-slate-800">{detailData.customer.customer_type}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div>
                                                                     <label className="block text-sm font-medium text-slate-500 mb-1">客户状态</label>
                                                                     {isEditing ? (
                                                                         <select
@@ -751,12 +769,17 @@ export default function CustomersPage() {
                                                                 <div>
                                                                     <label className="block text-sm font-medium text-slate-500 mb-1">客户来源</label>
                                                                     {isEditing ? (
-                                                                        <input
-                                                                            type="text"
-                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                        <select
+                                                                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm bg-white"
                                                                             value={editData.source_info || ''}
                                                                             onChange={e => setEditData({ ...editData, source_info: e.target.value })}
-                                                                        />
+                                                                        >
+                                                                            <option value="">请选择客户来源</option>
+                                                                            <option value="自主招商">自主招商</option>
+                                                                            <option value="以商招商">以商招商</option>
+                                                                            <option value="朋友">朋友</option>
+                                                                            <option value="园区">园区</option>
+                                                                        </select>
                                                                     ) : (
                                                                         <div className="text-slate-800">{detailData.customer.source_info}</div>
                                                                     )}

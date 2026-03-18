@@ -421,10 +421,11 @@ export default function NewCustomerPage() {
                                             onChange={e => setCustomerType(e.target.value)}
                                             className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
                                         >
-                                            <option value="企业">企业</option>
+                                            <option value="">请选择客户类型</option>
+                                            <option value="一般纳税人">一般纳税人</option>
+                                            <option value="小规模纳税人">小规模纳税人</option>
+                                            <option value="个人独资企业">个人独资企业</option>
                                             <option value="个体户">个体户</option>
-                                            <option value="个人">个人</option>
-                                            <option value="其他">其他</option>
                                         </select>
                                     </div>
 
@@ -468,13 +469,17 @@ export default function NewCustomerPage() {
 
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">客户来源</label>
-                                        <input
-                                            type="text"
+                                        <select
                                             value={sourceInfo}
                                             onChange={e => setSourceInfo(e.target.value)}
-                                            className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
-                                            placeholder="如：老客户介绍、抖音、网站"
-                                        />
+                                            className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
+                                        >
+                                            <option value="">请选择客户来源（选填）</option>
+                                            <option value="自主招商">自主招商</option>
+                                            <option value="以商招商">以商招商</option>
+                                            <option value="朋友">朋友</option>
+                                            <option value="园区">园区</option>
+                                        </select>
                                     </div>
 
                                     <div>

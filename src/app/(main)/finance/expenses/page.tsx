@@ -41,7 +41,7 @@ type Customer = {
     contact_info: string | null;
 };
 
-const EXPENSE_CATEGORIES = ['办公费', '交通费', '社保公积金', '工资', '税费', '外包服务费', '其他'];
+const EXPENSE_CATEGORIES = ['办公用品费', '水费', '电费', '交通费', '汽油费', '物业费', '汽车费', '社保费', '兼职工资', '外包代办费', '招待费', '其他'];
 const PAYMENT_METHODS = ['转账', '微信支付', '支付宝', '现金', '银行汇款', '其他'];
 
 function formatCurrency(val: number | null | undefined) {
@@ -323,15 +323,16 @@ function ExpenseEntryContent() {
                             </label>
                             <select value={expenseCategory} onChange={e => setExpenseCategory(e.target.value)}
                                 className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-600 bg-white transition-colors text-sm">
+                                <option value="">请选择费用类别</option>
                                 {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
-                                <ClipboardList className="w-4 h-4 text-slate-400" /> 费用类型
+                                <ClipboardList className="w-4 h-4 text-slate-400" /> 费用明细（选填）
                             </label>
-                            <input type="text" placeholder="如：打印耗材、出租车费（选填）" value={expenseType} onChange={e => setExpenseType(e.target.value)}
+                            <input type="text" placeholder="详细说明" value={expenseType} onChange={e => setExpenseType(e.target.value)}
                                 className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-600 transition-colors text-sm" />
                         </div>
 
@@ -921,11 +922,12 @@ function ExpenseHistoryContent() {
                                         onChange={e => setEditForm(prev => ({ ...prev, expense_category: e.target.value }))}
                                         className="w-full rounded-lg border border-slate-200 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-600 outline-none bg-white"
                                     >
+                                        <option value="">请选择费用类别</option>
                                         {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </div>
                                 <div className="col-span-1">
-                                    <label className="block text-xs font-medium text-slate-600 mb-1">费用类型</label>
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">费用明细</label>
                                     <input 
                                         type="text" 
                                         value={editForm.expense_type} 

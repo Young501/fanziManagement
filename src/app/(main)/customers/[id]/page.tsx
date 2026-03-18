@@ -481,8 +481,24 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                             </select>
                         </div>
                         <div>
+                            <label className="text-sm font-medium">客户类型</label>
+                            <select value={editBasicData.customer_type || ''} onChange={e => setEditBasicData({ ...editBasicData, customer_type: e.target.value })} className="w-full mt-1 rounded-md border p-2 bg-white">
+                                <option value="">请选择客户类型</option>
+                                <option value="一般纳税人">一般纳税人</option>
+                                <option value="小规模纳税人">小规模纳税人</option>
+                                <option value="个人独资企业">个人独资企业</option>
+                                <option value="个体户">个体户</option>
+                            </select>
+                        </div>
+                        <div>
                             <label className="text-sm font-medium">客户来源</label>
-                            <input type="text" value={editBasicData.source_info || ''} onChange={e => setEditBasicData({ ...editBasicData, source_info: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                            <select value={editBasicData.source_info || ''} onChange={e => setEditBasicData({ ...editBasicData, source_info: e.target.value })} className="w-full mt-1 rounded-md border p-2 bg-white">
+                                <option value="">请选择客户来源</option>
+                                <option value="自主招商">自主招商</option>
+                                <option value="以商招商">以商招商</option>
+                                <option value="朋友">朋友</option>
+                                <option value="园区">园区</option>
+                            </select>
                         </div>
                         <div>
                             <label className="text-sm font-medium">客服经理</label>
