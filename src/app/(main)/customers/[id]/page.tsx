@@ -528,36 +528,140 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                             <input type="text" value={editProfileData.company_nature || ''} onChange={e => setEditProfileData({ ...editProfileData, company_nature: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
                         </div>
                         <div>
+                            <label className="text-sm font-medium">税率</label>
+                            <select value={editProfileData.tax_rate || ''} onChange={e => setEditProfileData({ ...editProfileData, tax_rate: e.target.value })} className="w-full mt-1 rounded-md border p-2 bg-white">
+                                <option value="">请选择</option>
+                                <option value="3%">3%</option>
+                                <option value="6%">6%</option>
+                                <option value="9%">9%</option>
+                                <option value="13%">13%</option>
+                                <option value="免税">免税</option>
+                            </select>
+                        </div>
+                        <div>
                             <label className="text-sm font-medium">纳税人识别号</label>
                             <input type="text" value={editProfileData.taxpayer_no || ''} onChange={e => setEditProfileData({ ...editProfileData, taxpayer_no: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">法定代表人</label>
-                            <input type="text" value={editProfileData.legal_person || editProfileData.legal_representative || ''} onChange={e => setEditProfileData({ ...editProfileData, legal_person: e.target.value, legal_representative: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                            <label className="text-sm font-medium">法定代表人 (法人)</label>
+                            <input type="text" value={editProfileData.legal_person || editProfileData.legal_representative || ''} onChange={e => setEditProfileData({ ...editProfileData, legal_person: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">监事</label>
+                            <input type="text" value={editProfileData.supervisor || ''} onChange={e => setEditProfileData({ ...editProfileData, supervisor: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
                         </div>
                         <div>
                             <label className="text-sm font-medium">财务联系人</label>
                             <input type="text" value={editProfileData.finance_contact || ''} onChange={e => setEditProfileData({ ...editProfileData, finance_contact: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">办税员</label>
+                            <label className="text-sm font-medium">报税负责人 (办税员)</label>
                             <input type="text" value={editProfileData.tax_handler || ''} onChange={e => setEditProfileData({ ...editProfileData, tax_handler: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">成立/注册日期</label>
-                            <input type="date" value={editProfileData.registration_date || editProfileData.establishment_date || ''} onChange={e => setEditProfileData({ ...editProfileData, registration_date: e.target.value, establishment_date: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                            <label className="text-sm font-medium">注册日期</label>
+                            <input type="date" value={editProfileData.registration_date || editProfileData.establishment_date || ''} onChange={e => setEditProfileData({ ...editProfileData, registration_date: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div className="flex gap-2">
+                            <div className="flex-1">
+                                <label className="text-sm font-medium">注册资本</label>
+                                <input type="number" step="0.01" value={editProfileData.registered_capital || ''} onChange={e => setEditProfileData({ ...editProfileData, registered_capital: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                            </div>
+                            <div className="w-24">
+                                <label className="text-sm font-medium">单位</label>
+                                <input type="text" value={editProfileData.registered_capital_unit || '万元'} onChange={e => setEditProfileData({ ...editProfileData, registered_capital_unit: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                            </div>
                         </div>
                         <div>
-                            <label className="text-sm font-medium">注册资本 (万元)</label>
-                            <input type="number" step="0.01" value={editProfileData.registered_capital || ''} onChange={e => setEditProfileData({ ...editProfileData, registered_capital: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
-                        </div>
-                        <div>
-                            <label className="text-sm font-medium">所属税局</label>
+                            <label className="text-sm font-medium">所属税务局</label>
                             <input type="text" value={editProfileData.tax_office || ''} onChange={e => setEditProfileData({ ...editProfileData, tax_office: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
                         </div>
+                        <div>
+                            <label className="text-sm font-medium">税管员</label>
+                            <input type="text" value={editProfileData.tax_admin || ''} onChange={e => setEditProfileData({ ...editProfileData, tax_admin: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">税管员电话</label>
+                            <input type="text" value={editProfileData.tax_admin_phone || ''} onChange={e => setEditProfileData({ ...editProfileData, tax_admin_phone: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">所属园区/街道</label>
+                            <input type="text" value={editProfileData.community || ''} onChange={e => setEditProfileData({ ...editProfileData, community: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">是否代开发票</label>
+                            <select value={editProfileData.invoice_proxy_flag ? 'true' : 'false'} onChange={e => setEditProfileData({ ...editProfileData, invoice_proxy_flag: e.target.value === 'true' })} className="w-full mt-1 rounded-md border p-2 bg-white">
+                                <option value="false">否</option>
+                                <option value="true">是</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">是否使用云会计 (云账套/账号)</label>
+                            <input type="text" value={editProfileData.cloud_accounting || ''} onChange={e => setEditProfileData({ ...editProfileData, cloud_accounting: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">账套编号</label>
+                            <input type="text" value={editProfileData.account_book_no || ''} onChange={e => setEditProfileData({ ...editProfileData, account_book_no: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">系统序列号</label>
+                            <input type="text" value={editProfileData.serial_no || ''} onChange={e => setEditProfileData({ ...editProfileData, serial_no: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">税局登录名</label>
+                            <input type="text" value={editProfileData.company_login_name || ''} onChange={e => setEditProfileData({ ...editProfileData, company_login_name: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-slate-700">税局登录密码</label>
+                            <input type="text" value={editProfileData.company_login_password || ''} onChange={e => setEditProfileData({ ...editProfileData, company_login_password: e.target.value })} className="w-full mt-1 rounded-md border p-2 bg-yellow-50 focus:bg-white" placeholder="注意安全" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">是否签合同</label>
+                            <select value={editProfileData.contract_flag ? 'true' : 'false'} onChange={e => setEditProfileData({ ...editProfileData, contract_flag: e.target.value === 'true' })} className="w-full mt-1 rounded-md border p-2 bg-white">
+                                <option value="false">否</option>
+                                <option value="true">是</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">去年收入 (元)</label>
+                            <input type="number" step="0.01" value={editProfileData.last_year_revenue || ''} onChange={e => setEditProfileData({ ...editProfileData, last_year_revenue: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">收款银行卡</label>
+                            <input type="text" value={editProfileData.receipt_card_bank_name || ''} onChange={e => setEditProfileData({ ...editProfileData, receipt_card_bank_name: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">是否有CA证书</label>
+                            <select value={editProfileData.ca_token ? 'true' : 'false'} onChange={e => setEditProfileData({ ...editProfileData, ca_token: e.target.value === 'true' })} className="w-full mt-1 rounded-md border p-2 bg-white">
+                                <option value="false">无</option>
+                                <option value="true">有</option>
+                            </select>
+                        </div>
+                        
                         <div className="md:col-span-2">
-                            <label className="text-sm font-medium">经营范围</label>
-                            <textarea rows={3} value={editProfileData.business_scope || editProfileData.main_business || ''} onChange={e => setEditProfileData({ ...editProfileData, business_scope: e.target.value, main_business: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
+                            <label className="text-sm font-medium mb-1 block">印章留存</label>
+                            <div className="flex flex-wrap gap-4 mt-1 p-3 border rounded-md bg-slate-50">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!editProfileData.seal_company} onChange={e => setEditProfileData({ ...editProfileData, seal_company: e.target.checked })} className="rounded w-4 h-4 text-blue-600 focus:ring-blue-500" /> 公章
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!editProfileData.seal_legal} onChange={e => setEditProfileData({ ...editProfileData, seal_legal: e.target.checked })} className="rounded w-4 h-4 text-blue-600 focus:ring-blue-500" /> 法人章
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!editProfileData.seal_finance} onChange={e => setEditProfileData({ ...editProfileData, seal_finance: e.target.checked })} className="rounded w-4 h-4 text-blue-600 focus:ring-blue-500" /> 财务章
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!editProfileData.seal_invoice} onChange={e => setEditProfileData({ ...editProfileData, seal_invoice: e.target.checked })} className="rounded w-4 h-4 text-blue-600 focus:ring-blue-500" /> 发票章
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!editProfileData.seal_shareholder} onChange={e => setEditProfileData({ ...editProfileData, seal_shareholder: e.target.checked })} className="rounded w-4 h-4 text-blue-600 focus:ring-blue-500" /> 股东章
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="md:col-span-2">
+                            <label className="text-sm font-medium">主营业务简述 / 经营范围</label>
+                            <textarea rows={3} value={editProfileData.main_business || editProfileData.business_scope || ''} onChange={e => setEditProfileData({ ...editProfileData, main_business: e.target.value })} className="w-full mt-1 rounded-md border p-2" />
                         </div>
                         <div className="md:col-span-2">
                             <label className="text-sm font-medium">画像备注</label>
