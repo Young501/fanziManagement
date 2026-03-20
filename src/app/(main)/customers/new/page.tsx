@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { UserPlus, Save, X, History, Trash2, Loader2, AlertCircle } from 'lucide-react';
 
-export default function NewCustomerPage() {
+function NewCustomerContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'form';
@@ -1079,5 +1079,13 @@ export default function NewCustomerPage() {
                 </div>
             </main>
         </div>
+    );
+}
+
+export default function NewCustomerPage() {
+    return (
+        <Suspense fallback={<div className="flex p-8 items-center justify-center bg-slate-50"><div className="text-slate-500">加载中...</div></div>}>
+            <NewCustomerContent />
+        </Suspense>
     );
 }
