@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -10,6 +11,10 @@ function createAdminClient() {
 
 export async function POST(request: NextRequest) {
     try {
+        const supabaseAuth = await createServerClient();
+        const { data: { user } } = await supabaseAuth.auth.getUser();
+        if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
+
         const body = await request.json();
         const {
             customer_id,

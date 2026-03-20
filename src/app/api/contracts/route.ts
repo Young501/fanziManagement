@@ -1,4 +1,5 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -35,6 +36,10 @@ function noStoreJson(body: unknown, status = 200) {
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
+
+        const supabaseAuth = await createServerClient();
+        const { data: { user } } = await supabaseAuth.auth.getUser();
+        if (!user) return noStoreJson({ error: '未授权，请先登录' }, 401);
         const page = toPositiveInt(searchParams.get('page'), 1);
         const limit = Math.min(toPositiveInt(searchParams.get('limit'), DEFAULT_LIMIT), MAX_LIMIT);
         const search = sanitizeSearch(searchParams.get('search')).toLowerCase();

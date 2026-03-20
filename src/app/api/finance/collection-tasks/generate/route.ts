@@ -1,4 +1,5 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -24,6 +25,10 @@ function computePriority(overdayDays: number, uncollected: number, daysUntilDue:
 
 export async function POST() {
     try {
+        const supabaseAuth = await createServerClient();
+        const { data: { user } } = await supabaseAuth.auth.getUser();
+        if (!user) return noStoreJson({ error: '未授权，请先登录' }, 401);
+
         const supabase = createAdminClient();
         const today = new Date();
         const y = today.getFullYear();

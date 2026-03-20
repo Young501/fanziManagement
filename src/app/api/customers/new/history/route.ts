@@ -26,6 +26,8 @@ async function getRole() {
 export async function GET(request: NextRequest) {
     try {
         const supabase = await createServerClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page') || '1');
         const limit = parseInt(searchParams.get('limit') || '20');

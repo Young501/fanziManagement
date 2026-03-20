@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 function createAdminClient() {
@@ -10,6 +11,10 @@ function createAdminClient() {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
+        const supabaseAuth = await createServerClient();
+        const { data: { user } } = await supabaseAuth.auth.getUser();
+        if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
+
         const { id } = await params;
         if (!id) {
             return NextResponse.json({ error: 'Missing customer ID' }, { status: 400 });
@@ -70,6 +75,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
+        const supabaseAuth = await createServerClient();
+        const { data: { user } } = await supabaseAuth.auth.getUser();
+        if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
+
         const { id } = await params;
         if (!id) {
             return NextResponse.json({ error: 'Missing customer ID' }, { status: 400 });
