@@ -90,7 +90,7 @@ const RENEWAL_FIELD_LABELS: Record<keyof RenewalFields, string> = {
     discount_gap: '优惠差额',
 };
 
-const PAYMENT_METHODS = ['微信支付', '支付宝', '现金', '银行汇款', '其他'];
+const PAYMENT_METHODS = ['微信支付', '支付宝', '现金', '银行汇款-范咨记账', '银行汇款-范咨管理', '银行汇款-其他', '其他'];
 
 function formatCurrency(val: number | null | undefined) {
     if (val == null) return '¥0.00';
@@ -828,12 +828,12 @@ function PaymentEntryContent() {
                                     >
                                         <div className="flex items-center gap-2">
                                             <TrendingDown className="w-4 h-4 text-emerald-600" />
-                                            <label className="text-sm font-semibold text-emerald-900 cursor-pointer">本次收款协商优惠 (Optional)</label>
+                                            <label className="text-sm font-semibold text-emerald-900 cursor-pointer">本次收款协商调价 (Optional)</label>
                                             <ChevronDown className={`w-4 h-4 text-emerald-400 transition-transform duration-200 ${showAdjustment ? 'rotate-180' : ''}`} />
                                         </div>
                                         <div className="text-xs text-emerald-700 font-medium">
                                             {discountedPayable !== selectedReceivable.amount_payable_period ? (
-                                                <span className="text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">已应用优惠</span>
+                                                <span className="text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">已应用调价</span>
                                             ) : (
                                                 <span>原应收：<span className="font-mono">{formatCurrency(selectedReceivable.amount_payable_period)}</span></span>
                                             )}
@@ -859,10 +859,10 @@ function PaymentEntryContent() {
                                                 </div>
                                                 {discountedPayable !== selectedReceivable.amount_payable_period && (
                                                     <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                                                        <label className="block text-[11px] font-medium text-emerald-700 mb-1">优惠原因 (Required)</label>
+                                                        <label className="block text-[11px] font-medium text-emerald-700 mb-1">调价原因 (Required)</label>
                                                         <input
                                                             type="text"
-                                                            placeholder="请填写优惠理由..."
+                                                            placeholder="请填写调价理由..."
                                                             value={discountReason}
                                                             onChange={e => setDiscountReason(e.target.value)}
                                                             className={`w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors shadow-sm ${!discountReason ? 'border-amber-400 bg-white' : 'border-emerald-200 bg-white'}`}
@@ -871,7 +871,7 @@ function PaymentEntryContent() {
                                                 )}
                                             </div>
                                             <p className="text-[10px] text-emerald-600 leading-relaxed italic">
-                                                提示：若本期实收金额因特殊原因产生变动，请点击上方“协商优惠”进行调整，下一期将自动恢复合同原价。
+                                                提示：若本期实收金额因特殊原因产生变动，请点击上方“协商调价”进行调整，下一期将自动恢复合同原价。
                                             </p>
                                         </div>
                                     )}
@@ -1174,8 +1174,10 @@ function PaymentEntryContent() {
                                             </div>
                                             {discountedPayable !== null && selectedReceivable && Math.abs(discountedPayable - selectedReceivable.amount_payable_period) > 0.01 && (
                                                 <div className="flex justify-between items-center text-sm animate-in fade-in slide-in-from-top-1 duration-200">
-                                                    <span className="text-slate-500">本期优惠</span>
-                                                    <span className="font-semibold text-red-600 font-mono">-{formatCurrency(selectedReceivable.amount_payable_period - discountedPayable)}</span>
+                                                    <span className="text-slate-500">本期调价</span>
+                                                    <span className={`font-semibold font-mono ${discountedPayable > selectedReceivable.amount_payable_period ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                        {discountedPayable > selectedReceivable.amount_payable_period ? '+' : '-'}{formatCurrency(Math.abs(discountedPayable - selectedReceivable.amount_payable_period))}
+                                                    </span>
                                                 </div>
                                             )}
                                             <div className="flex justify-between items-center text-sm">

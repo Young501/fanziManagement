@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { UserPlus, Save, X, History, Trash2, Loader2, AlertCircle } from 'lucide-react';
 
 export default function NewCustomerPage() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<'form' | 'history'>('form');
+    const searchParams = useSearchParams();
+    const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'form';
+    const [activeTab, setActiveTab] = useState<'form' | 'history'>(initialTab);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 

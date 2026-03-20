@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { Database, Users, ArrowUpRight, Activity, TrendingUp, TrendingDown } from 'lucide-react';
 import { createClient } from '@/utils/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import Link from 'next/link';
 
 function createAdminClient() {
   return createSupabaseClient(
@@ -134,31 +135,35 @@ export default async function Home() {
 
   const yearStart = `${now.getFullYear()}-01-01`;
 
-  // 6. This year's financials (conditionally fetched based on role)
+  // 6. This year's and month's financials (conditionally fetched based on role)
   let totalCollectedThisYear = 0;
   let totalSpentThisYear = 0;
+  let totalCollectedThisMonth = 0;
+  let totalSpentThisMonth = 0;
   const canViewFinancials = userRole === 'admin' || userRole === 'manager';
 
   if (canViewFinancials) {
     const { data: thisYearPayments } = await serverClient
       .from('payment_records')
-      .select('paid_amount')
+      .select('paid_amount, paid_at')
       .gte('paid_at', yearStart);
     totalCollectedThisYear = (thisYearPayments || []).reduce((sum, r) => sum + Number(r.paid_amount || 0), 0);
+    totalCollectedThisMonth = (thisYearPayments || []).filter(r => r.paid_at >= monthStart).reduce((sum, r) => sum + Number(r.paid_amount || 0), 0);
 
     const supabaseAdmin = createAdminClient();
     const { data: thisYearExpenses } = await supabaseAdmin
       .from('expense_records')
-      .select('expense_amount')
+      .select('expense_amount, expense_date')
       .gte('expense_date', yearStart);
     totalSpentThisYear = (thisYearExpenses || []).reduce((sum, r) => sum + Number(r.expense_amount || 0), 0);
+    totalSpentThisMonth = (thisYearExpenses || []).filter(r => (r.expense_date || '') >= monthStart).reduce((sum, r) => sum + Number(r.expense_amount || 0), 0);
   }
 
   const stats = [
-    { name: '总客户数', value: totalCustomers || 0, change: '实时', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { name: '本月新增客户', value: thisMonthNewCustomers || 0, change: '实时', icon: Activity, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { name: '本月待收款任务', value: tasksDueThisMonth, change: '实时', icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { name: '逾期催款任务', value: tasksOverdue, change: '加急', icon: ArrowUpRight, color: 'text-rose-600', bg: 'bg-rose-50' },
+    { name: '总客户数', value: totalCustomers || 0, change: '实时', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', link: '/customers' },
+    { name: '本月新增客户', value: thisMonthNewCustomers || 0, change: '实时', icon: Activity, color: 'text-indigo-600', bg: 'bg-indigo-50', link: '/customers/new?tab=history' },
+    { name: '本月待收款任务', value: tasksDueThisMonth, change: '实时', icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-50', link: '/finance/collection-tasks?tab=due_this_month' },
+    { name: '逾期催款任务', value: tasksOverdue, change: '加急', icon: ArrowUpRight, color: 'text-rose-600', bg: 'bg-rose-50', link: '/finance/collection-tasks?tab=overdue' },
   ];
 
   return (
@@ -178,9 +183,10 @@ export default async function Home() {
         {stats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
-            <div
+            <Link
+              href={stat.link}
               key={idx}
-              className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-300"
+              className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-300 block cursor-pointer group"
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`p-2 rounded-lg ${stat.bg}`}>
@@ -196,18 +202,18 @@ export default async function Home() {
                 </span>
               </div>
               <div>
-                <h3 className="text-sm font-medium text-slate-500 mb-1">{stat.name}</h3>
+                <h3 className="text-sm font-medium text-slate-500 mb-1 group-hover:text-blue-600 transition-colors">{stat.name}</h3>
                 <p className="text-3xl font-bold text-slate-900 tracking-tight">{stat.value}</p>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>
 
       {/* Financial Summary Bar (Only visible to admin/manager) */}
       {canViewFinancials && (
-        <div className="flex flex-col md:flex-row bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-          <div className="flex-1 p-6 relative overflow-hidden group">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-slate-100 rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+          <div className="p-6 relative overflow-hidden group bg-white">
             <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-1/4 -translate-y-1/4 transition-transform group-hover:scale-110 group-hover:-translate-y-1/3">
               <TrendingUp className="w-32 h-32 text-emerald-600" />
             </div>
@@ -219,7 +225,7 @@ export default async function Home() {
                 <p className="text-slate-500 text-sm font-medium mb-1">今年已收款</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-3xl font-bold tracking-tight text-slate-900">
-                    ¥{totalCollectedThisYear.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ¥{totalCollectedThisYear.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}元
                   </span>
                   <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                     全年计
@@ -229,10 +235,7 @@ export default async function Home() {
             </div>
           </div>
 
-          <div className="w-px bg-slate-100 hidden md:block"></div>
-          <div className="h-px bg-slate-100 md:hidden block"></div>
-
-          <div className="flex-1 p-6 relative overflow-hidden group">
+          <div className="p-6 relative overflow-hidden group bg-white">
             <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-1/4 -translate-y-1/4 transition-transform group-hover:scale-110 group-hover:-translate-y-1/3">
               <TrendingDown className="w-32 h-32 text-rose-600" />
             </div>
@@ -244,10 +247,54 @@ export default async function Home() {
                 <p className="text-slate-500 text-sm font-medium mb-1">今年已支出</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-3xl font-bold tracking-tight text-slate-900">
-                    ¥{totalSpentThisYear.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ¥{totalSpentThisYear.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}元
                   </span>
                   <span className="text-xs font-medium text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
                     全年计
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 relative overflow-hidden group bg-white">
+            <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-1/4 -translate-y-1/4 transition-transform group-hover:scale-110 group-hover:-translate-y-1/3">
+              <TrendingUp className="w-32 h-32 text-emerald-600" />
+            </div>
+            <div className="relative z-10 flex items-center space-x-5">
+              <div className="p-3.5 bg-emerald-50 rounded-xl ring-1 ring-emerald-100">
+                <TrendingUp className="w-6 h-6 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-slate-500 text-sm font-medium mb-1">当月已收款</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight text-slate-900">
+                    ¥{totalCollectedThisMonth.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}元
+                  </span>
+                  <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    当月计
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 relative overflow-hidden group bg-white">
+            <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-1/4 -translate-y-1/4 transition-transform group-hover:scale-110 group-hover:-translate-y-1/3">
+              <TrendingDown className="w-32 h-32 text-rose-600" />
+            </div>
+            <div className="relative z-10 flex items-center space-x-5">
+              <div className="p-3.5 bg-rose-50 rounded-xl ring-1 ring-rose-100">
+                <TrendingDown className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <p className="text-slate-500 text-sm font-medium mb-1">当月已支出</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight text-slate-900">
+                    ¥{totalSpentThisMonth.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}元
+                  </span>
+                  <span className="text-xs font-medium text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
+                    当月计
                   </span>
                 </div>
               </div>
