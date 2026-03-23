@@ -1,9 +1,9 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 import { createClient } from '@/utils/supabase/server';
 
 const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 300;
 
 function toPositiveInt(value: string | null, fallback: number) {
     const n = Number.parseInt(value ?? '', 10);

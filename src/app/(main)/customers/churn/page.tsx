@@ -34,7 +34,7 @@ export default function ChurnRegistrationPage() {
 
     useEffect(() => {
         setLoading(true);
-        fetch('/api/customers?limit=1000')
+        fetch('/api/customers?limit=300')
             .then(res => res.json())
             .then(data => {
                 if (data.data) {
