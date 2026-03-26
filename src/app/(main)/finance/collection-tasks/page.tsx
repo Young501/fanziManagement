@@ -5,8 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
     PhoneCall, CheckCircle2, Calendar, ChevronLeft, ChevronRight,
     AlertTriangle, Clock, Zap, RefreshCw, X, ChevronDown, User,
-    BadgeAlert, Wallet, TrendingDown, StickyNote
+    BadgeAlert, Wallet, TrendingDown, StickyNote, Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { MaskedContact } from '@/components/ui/MaskedContact';
 
 // ────────────────────────────────────────────────────────────── types
@@ -105,6 +106,7 @@ function CollectionTasksContent() {
     const [statsLoading, setStatsLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [generateMsg, setGenerateMsg] = useState<string | null>(null);
+    const [exporting, setExporting] = useState(false);
 
     const [selectedTask, setSelectedTask] = useState<CollectionTask | null>(null);
     const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -270,6 +272,64 @@ function CollectionTasksContent() {
         }
     };
 
+    // ── Export Excel
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const res = await fetch('/api/finance/collection-tasks/export');
+            const json = await res.json();
+            if (!res.ok || json.error) throw new Error(json.error || '导出失败');
+            const data = json.data || [];
+
+            // Map data to Excel columns
+            const excelData = data.map((task: any) => {
+                let cycleText = '未知';
+                if (task.pay_cycle_months === 1) cycleText = '按月付款';
+                else if (task.pay_cycle_months === 3) cycleText = '按季度付款';
+                else if (task.pay_cycle_months === 6) cycleText = '按半年付款';
+                else if (task.pay_cycle_months === 12) cycleText = '按年度付款';
+
+                return {
+                    '客户名称': task.company_name || '-',
+                    '付款周期': cycleText,
+                    '每月金额': task.billing_fee_month || 0,
+                    '应付总金额': task.target_amount || task.amount_payable_period || 0,
+                    '待收金额': task.uncollected_amount || 0,
+                    '是否逾期': task.is_overdue ? '是' : '否',
+                    '合同到期日': task.contract_end_date ? formatDate(task.contract_end_date) : '-',
+                    '付款截止日': task.receivable_due_date ? formatDate(task.receivable_due_date) : '-',
+                    '负责人': task.owner || '-',
+                    '状态': task.status === 'pending' ? '待处理' : task.status === 'in_progress' ? '跟进中' : task.status === 'completed' ? '已完成' : task.status
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '催款任务');
+            
+            // Set column widths
+            worksheet['!cols'] = [
+                { wch: 30 }, // 客户名称
+                { wch: 15 }, // 付款周期
+                { wch: 15 }, // 每月金额
+                { wch: 15 }, // 应付总金额
+                { wch: 15 }, // 待收金额
+                { wch: 10 }, // 是否逾期
+                { wch: 15 }, // 合同到期日
+                { wch: 15 }, // 付款截止日
+                { wch: 15 }, // 负责人
+                { wch: 15 }, // 状态
+            ];
+
+            const dateStr = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(workbook, `催款任务_${dateStr}.xlsx`);
+        } catch (err: any) {
+            alert(err.message || '导出失败');
+        } finally {
+            setExporting(false);
+        }
+    };
+
     // Open detail panel
     const openDetail = (task: CollectionTask) => {
         setSelectedTask(task);
@@ -295,9 +355,17 @@ function CollectionTasksContent() {
                         </span>
                     )}
                     <button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all disabled:opacity-60"
+                    >
+                        <Download className={`w-4 h-4 ${exporting ? 'animate-bounce' : ''}`} />
+                        {exporting ? '导出中...' : '导出 Excel'}
+                    </button>
+                    <button
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all disabled:opacity-60"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all disabled:opacity-60"
                     >
                         <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
                         {generating ? '生成中...' : '生成任务'}

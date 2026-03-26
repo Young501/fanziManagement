@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Category whitelist
-        const VALID_CATEGORIES = ['办公费', '交通费', '社保公积金', '工资', '税费', '外包服务费', '其他'];
+        const VALID_CATEGORIES = ['办公用品费', '水费', '电费', '交通费', '汽油费', '物业费', '汽车费', '社保费', '兼职工资', '外包代办费', '招待费', '其他'];
         if (!VALID_CATEGORIES.includes(expense_category)) {
             return noStoreJson({ error: '无效的费用类别' }, 400);
         }
