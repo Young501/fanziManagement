@@ -342,6 +342,7 @@ function PaymentEntryContent() {
     const paidSoFar = Number(selectedReceivable?.amount_paid_period || 0);
     const amountNum = parseFloat(paidAmount) || 0;
     const remaining = Math.max(0, payable - paidSoFar); // current unpaid balance for THIS period
+    const isFinishing = amountNum > 0 && amountNum >= remaining - 0.01;
     const afterPaid = paidSoFar + amountNum;
     const afterRemaining = Math.max(0, payable - afterPaid);
     const afterStatus = selectedReceivable
@@ -362,7 +363,7 @@ function PaymentEntryContent() {
             if (!selectedReceivable) return false;
             // Use current payable for limit check
             if (amountNum > remaining + 0.01) return false;
-            if (!renewalValid) return false;
+            if (isFinishing && !renewalValid) return false;
             if (!discountValid) return false;
             return true;
         }
@@ -918,6 +919,7 @@ function PaymentEntryContent() {
 
                     {/* Step E: Renewal & Contract Confirmation (Hidden if AdHoc) */}
                     {selectedCustomer && !isAdHoc && selectedReceivable && renewal && (
+                        isFinishing ? (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-full bg-violet-600 text-white flex items-center justify-center text-xs font-bold">E</div>
@@ -1131,6 +1133,17 @@ function PaymentEntryContent() {
                                 )}
                             </div>
                         </div>
+                        ) : (
+                            <div className="bg-slate-50/50 rounded-2xl border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[200px]">
+                                <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-3">
+                                    <FileText className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-1">本次为部分付款</h3>
+                                <p className="text-xs text-slate-500 max-w-[250px]">
+                                    全额付清本期账单后，系统将在该步骤提示您确认并生成下期账单。
+                                </p>
+                            </div>
+                        )
                     )}
                 </div>
 
@@ -1213,7 +1226,7 @@ function PaymentEntryContent() {
                                     )}
 
                                     {/* Renewal summary */}
-                                    {renewal && changedFields.length > 0 && !isAdHoc && (
+                                    {renewal && changedFields.length > 0 && !isAdHoc && isFinishing && (
                                         <div className="border-t border-slate-100 pt-3 space-y-1.5">
                                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">变更摘要</p>
                                             {changedFields.map(f => (
@@ -1294,7 +1307,7 @@ function PaymentEntryContent() {
                                     <span className="text-slate-500">收款方式</span>
                                     <span className="font-semibold text-slate-900">{method}</span>
                                 </div>
-                                {!isAdHoc && renewal && (
+                                {!isAdHoc && renewal && isFinishing && (
                                     <>
                                         <div className="h-px bg-slate-100 my-2" />
                                         <div className="flex justify-between text-sm text-violet-700">
