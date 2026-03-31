@@ -454,8 +454,14 @@ function PaymentEntryContent() {
                 return;
             }
 
-            // Auto complete collection task if taskId is provided
-            if (taskId) {
+            // Auto complete collection task if taskId is provided AND the receivable is fully paid
+            // We use the same isFinishing logic but calculated per-payment.
+            const targetPayableForCheck = discountedPayable !== null ? discountedPayable : selectedReceivable!.amount_payable_period;
+            const paidSoFarForCheck = selectedReceivable!.amount_paid_period || 0;
+            const remainingToPayForCheck = targetPayableForCheck - paidSoFarForCheck;
+            const isFinishingCheck = isAdHoc || (parseFloat(paidAmount) || 0) >= remainingToPayForCheck - 0.01;
+
+            if (taskId && isFinishingCheck) {
                 try {
                     await fetch(`/api/finance/collection-tasks/${taskId}`, {
                         method: 'PATCH',

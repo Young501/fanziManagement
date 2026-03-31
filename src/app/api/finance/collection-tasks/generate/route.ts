@@ -72,17 +72,29 @@ export async function POST() {
         }
 
         const receivableIds = unpaidReceivables.map((r: any) => r.id);
-        const { data: existingTasks } = await supabase
+        const { data: allExistingTasks } = await supabase
             .from('collection_tasks')
-            .select('receivable_id')
-            .in('receivable_id', receivableIds)
-            .in('status', ['open', 'in_progress', 'promised']);
+            .select('id, receivable_id, status')
+            .in('receivable_id', receivableIds);
 
-        const existingReceivableIds = new Set((existingTasks || []).map((t: any) => t.receivable_id));
+        const activeTaskReceivableIds = new Set(
+            (allExistingTasks || [])
+                .filter((t: any) => ['open', 'in_progress', 'promised'].includes(t.status))
+                .map((t: any) => t.receivable_id)
+        );
+
+        const completedTaskMap = new Map();
+        (allExistingTasks || []).forEach((t: any) => {
+            if (t.status === 'completed' || t.status === 'cancelled') {
+                completedTaskMap.set(t.receivable_id, t.id);
+            }
+        });
 
         const toInsert = [];
+        const toReopen: any[] = [];
+        
         for (const rec of unpaidReceivables) {
-            if (existingReceivableIds.has(rec.id)) continue;
+            if (activeTaskReceivableIds.has(rec.id)) continue;
 
             const paid = Number(rec.amount_paid_period || 0);
             const payable = Number(rec.amount_payable_period || 0);
@@ -98,30 +110,55 @@ export async function POST() {
 
             const priority = computePriority(overdueDays, uncollected, daysUntilDue);
 
-            toInsert.push({
-                customer_id: rec.customer_id,
-                receivable_id: rec.id,
-                priority,
-                status: 'open',
-                target_amount: uncollected,
-                due_date: dueDate,
-            });
+            if (completedTaskMap.has(rec.id)) {
+                toReopen.push({
+                    id: completedTaskMap.get(rec.id),
+                    customer_id: rec.customer_id,
+                    receivable_id: rec.id,
+                    priority,
+                    status: 'open',
+                    target_amount: uncollected,
+                    due_date: dueDate,
+                });
+            } else {
+                toInsert.push({
+                    customer_id: rec.customer_id,
+                    receivable_id: rec.id,
+                    priority,
+                    status: 'open',
+                    target_amount: uncollected,
+                    due_date: dueDate,
+                });
+            }
         }
 
-        if (toInsert.length === 0) {
+        if (toInsert.length === 0 && toReopen.length === 0) {
             return noStoreJson({ created: 0, message: 'All unpaid receivables already have open tasks' });
         }
 
-        const { error: insertError } = await supabase
-            .from('collection_tasks')
-            .insert(toInsert);
+        if (toInsert.length > 0) {
+            const { error: insertError } = await supabase
+                .from('collection_tasks')
+                .insert(toInsert);
 
-        if (insertError) {
-            console.error('[collection-tasks/generate] insert error:', insertError);
-            return noStoreJson({ error: insertError.message }, 500);
+            if (insertError) {
+                console.error('[collection-tasks/generate] insert error:', insertError);
+                return noStoreJson({ error: insertError.message }, 500);
+            }
         }
 
-        return noStoreJson({ created: toInsert.length, message: `Generated ${toInsert.length} tasks` });
+        if (toReopen.length > 0) {
+            const { error: reopenError } = await supabase
+                .from('collection_tasks')
+                .upsert(toReopen);
+
+            if (reopenError) {
+                console.error('[collection-tasks/generate] reopen error:', reopenError);
+                return noStoreJson({ error: reopenError.message }, 500);
+            }
+        }
+
+        return noStoreJson({ created: toInsert.length, reopened: toReopen.length, message: `Generated ${toInsert.length} tasks, Reopened ${toReopen.length} tasks` });
     } catch (err: any) {
         console.error('[collection-tasks/generate] unexpected error:', err);
         return noStoreJson({ error: err?.message ?? 'Internal server error' }, 500);
