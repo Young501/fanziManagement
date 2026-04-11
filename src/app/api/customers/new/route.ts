@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
             website_member_name,
             customer_status,
             source_info,
+            source_remark,
             service_manager,
             address
         } = customerInfo;
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
                 website_member_name,
                 customer_status: customer_status || '正常',
                 source_info,
+                source_remark: source_remark || null,
                 service_manager,
                 address
             })
@@ -184,10 +186,13 @@ export async function POST(request: NextRequest) {
         if (paymentInfo.has_paid) {
             const pCycle = parseInt(pay_cycle_months || '0', 10);
             const eDate = new Date(effective_date);
+            if (Number.isNaN(eDate.getTime())) {
+                return NextResponse.json({ error: '生效日期无效，请重新选择生效日期' }, { status: 400 });
+            }
             
             // Calculate first cycle end date
             const firstCycleEnd = new Date(eDate);
-            firstCycleEnd.setMonth(firstCycleEnd.setMonth(firstCycleEnd.getMonth() + (pCycle > 0 ? pCycle : 1)));
+            firstCycleEnd.setMonth(firstCycleEnd.getMonth() + (pCycle > 0 ? pCycle : 1));
             firstCycleEnd.setDate(firstCycleEnd.getDate() - 1);
 
             // A. Create first receivable (already paid)
@@ -268,6 +273,9 @@ export async function POST(request: NextRequest) {
             if (stdPrice > 0) {
                 const pCycle = parseInt(pay_cycle_months || '0', 10);
                 const eDate = new Date(effective_date);
+                if (Number.isNaN(eDate.getTime())) {
+                    return NextResponse.json({ error: '生效日期无效，请重新选择生效日期' }, { status: 400 });
+                }
                 let periodEnd = new Date(eDate);
                 periodEnd.setMonth(periodEnd.getMonth() + (pCycle > 0 ? pCycle : 1));
                 periodEnd.setDate(periodEnd.getDate() - 1);

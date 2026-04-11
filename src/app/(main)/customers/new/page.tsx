@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { UserPlus, Save, X, History, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { CUSTOMER_SOURCE_OPTIONS, getCustomerSourceRemarkPlaceholder } from '@/lib/customer-source';
 
 function NewCustomerContent() {
     const router = useRouter();
@@ -86,6 +87,7 @@ function NewCustomerContent() {
     const [websiteMemberName, setWebsiteMemberName] = useState('');
     const [customerStatus, setCustomerStatus] = useState('正常');
     const [sourceInfo, setSourceInfo] = useState('');
+    const [sourceRemark, setSourceRemark] = useState('');
     const [serviceManager, setServiceManager] = useState('');
     const [address, setAddress] = useState('');
 
@@ -171,7 +173,7 @@ function NewCustomerContent() {
             return;
         }
         if (!standardPrice || !payCycleMonths || !effectiveDate) {
-            setError('请填写服务价格相关的必填项 (标准报价、收款周期、生效日期)');
+            setError('请填写服务价格相关的必填项 (每个收款周期总金额、收款周期、生效日期)');
             return;
         }
 
@@ -197,6 +199,7 @@ function NewCustomerContent() {
                 website_member_name: websiteMemberName,
                 customer_status: customerStatus,
                 source_info: sourceInfo,
+                source_remark: sourceRemark.trim(),
                 service_manager: serviceManager,
                 address: address
             };
@@ -477,12 +480,24 @@ function NewCustomerContent() {
                                             className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all bg-white"
                                         >
                                             <option value="">请选择客户来源（选填）</option>
-                                            <option value="自主招商">自主招商</option>
-                                            <option value="以商招商">以商招商</option>
-                                            <option value="朋友">朋友</option>
-                                            <option value="园区">园区</option>
+                                            {CUSTOMER_SOURCE_OPTIONS.map(option => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
                                         </select>
                                     </div>
+
+                                    {(sourceInfo || sourceRemark) && (
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">来源备注</label>
+                                            <input
+                                                type="text"
+                                                value={sourceRemark}
+                                                onChange={e => setSourceRemark(e.target.value)}
+                                                className="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                                                placeholder={getCustomerSourceRemarkPlaceholder(sourceInfo)}
+                                            />
+                                        </div>
+                                    )}
 
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">分配客服/财务</label>
@@ -539,7 +554,7 @@ function NewCustomerContent() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">标准报价/指导价 (元) <span className="text-red-500">*</span></label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">每个收款周期总金额 (元) <span className="text-red-500">*</span></label>
                                         <input
                                             type="number"
                                             step="0.01"

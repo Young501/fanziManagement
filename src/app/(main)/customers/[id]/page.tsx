@@ -2,10 +2,11 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Building2, Users, FileText, AlertCircle, FileSignature, Edit } from 'lucide-react';
+import { ChevronLeft, Building2, Users, FileText, AlertCircle, FileSignature, Edit, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { MaskedContact } from '@/components/ui/MaskedContact';
+import { getCustomerSourceRemarkPlaceholder } from '@/lib/customer-source';
 
 type CustomerInfo = {
     customer: any;
@@ -41,6 +42,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     const [isEditingShareholder, setIsEditingShareholder] = useState(false);
     const [editShareholderData, setEditShareholderData] = useState<any>({});
     const [isSaving, setIsSaving] = useState(false);
+    const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
 
     const fetchCustomer = () => {
         setLoading(true);
@@ -68,6 +70,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     }, [id]);
 
     const isManagerOrAdmin = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'admin';
+    const isAdmin = userRole?.toLowerCase() === 'admin';
 
     const handleSaveBasic = async () => {
         setIsSaving(true);
@@ -83,6 +86,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                     address: editBasicData.address,
                     customer_status: editBasicData.customer_status,
                     source_info: editBasicData.source_info,
+                    source_remark: editBasicData.source_remark,
                     service_manager: editBasicData.service_manager
                 })
             });
@@ -150,6 +154,37 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     if (loading && !data) return <div className="p-8 text-center text-slate-500">加载中...</div>;
     if (error || !data?.customer) return <div className="p-8 text-center text-red-500">{error || '未找到该客户'}</div>;
 
+    const handleDeleteCustomer = async () => {
+        if (!isAdmin || !data?.customer) return;
+
+        const firstConfirm = window.confirm(
+            `确定要永久删除客户档案“${data.customer.company_name}”吗？\n这会一并删除合同、账单、收款等关联记录，且不可撤销。`
+        );
+        if (!firstConfirm) return;
+
+        const typedName = window.prompt(`为防止误删，请输入客户名称“${data.customer.company_name}”后继续删除：`, '');
+        if (typedName !== data.customer.company_name) {
+            window.alert('输入的客户名称不匹配，已取消删除。');
+            return;
+        }
+
+        setIsDeletingCustomer(true);
+        try {
+            const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+            const payload = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                throw new Error(payload.error || '删除客户档案失败');
+            }
+
+            router.push('/customers');
+        } catch (err: any) {
+            window.alert(err.message);
+        } finally {
+            setIsDeletingCustomer(false);
+        }
+    };
+
     const { customer, companyProfile, shareholders, contracts } = data;
 
     return (
@@ -171,6 +206,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                         </p>
                     </div>
                 </div>
+                {isAdmin && (
+                    <button
+                        onClick={handleDeleteCustomer}
+                        disabled={isDeletingCustomer}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        {isDeletingCustomer ? '删除中...' : '删除客户档案'}
+                    </button>
+                )}
             </header>
 
             {/* Main Content with Tabs */}
@@ -243,6 +288,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                                         <label className="block text-sm font-medium text-slate-500 mb-1">客户来源</label>
                                         <div className="text-slate-800">{customer.source_info}</div>
                                     </div>
+                                    {customer.source_remark && (
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-500 mb-1">来源备注</label>
+                                            <div className="text-slate-800 break-words">{customer.source_remark}</div>
+                                        </div>
+                                    )}
                                     <div>
                                         <label className="block text-sm font-medium text-slate-500 mb-1">客服经理</label>
                                         <div className="text-slate-800">{customer.service_manager}</div>
@@ -500,6 +551,18 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                                 <option value="园区">园区</option>
                             </select>
                         </div>
+                        {(editBasicData.source_info || editBasicData.source_remark) && (
+                            <div className="md:col-span-2">
+                                <label className="text-sm font-medium">来源备注</label>
+                                <input
+                                    type="text"
+                                    value={editBasicData.source_remark || ''}
+                                    onChange={e => setEditBasicData({ ...editBasicData, source_remark: e.target.value })}
+                                    className="w-full mt-1 rounded-md border p-2"
+                                    placeholder={getCustomerSourceRemarkPlaceholder(editBasicData.source_info)}
+                                />
+                            </div>
+                        )}
                         <div>
                             <label className="text-sm font-medium">客服经理</label>
                             <input type="text" value={editBasicData.service_manager || ''} onChange={e => setEditBasicData({ ...editBasicData, service_manager: e.target.value })} className="w-full mt-1 rounded-md border p-2" />

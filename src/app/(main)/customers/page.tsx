@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Search, FileText, UserMinus, Filter, X, ChevronLeft, ChevronRight, Users, TrendingUp, TrendingDown, Minus, Building2 } from 'lucide-react';
+import { Plus, Search, FileText, UserMinus, Filter, X, ChevronLeft, ChevronRight, Users, TrendingUp, TrendingDown, Minus, Building2, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from 'next/link';
 import { MaskedContact } from '@/components/ui/MaskedContact';
+import { getCustomerSourceRemarkPlaceholder } from '@/lib/customer-source';
 
 // City prefixes to skip when picking avatar character
 const CITY_PREFIXES = ['上海', '广州', '深圳', '北京', '杭州', '南京', '苏州', '成都', '武汉', '天津'];
@@ -27,6 +28,7 @@ type Customer = {
     address: string;
     customer_status: string;
     source_info: string;
+    source_remark?: string;
     service_manager: string;
     created_at: string;
     [key: string]: any;
@@ -62,6 +64,7 @@ export default function CustomersPage() {
     }, []);
 
     const isManagerOrAdmin = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'admin';
+    const isAdmin = userRole?.toLowerCase() === 'admin';
 
     const [stats, setStats] = useState<{ totalCustomers: number, monthlyChange: number, thisMonthCount: number, lastMonthCount: number } | null>(null);
     const [statsLoading, setStatsLoading] = useState(true);
@@ -101,6 +104,7 @@ export default function CustomersPage() {
     const [editProfileData, setEditProfileData] = useState<any>({});
 
     const [saveLoading, setSaveLoading] = useState(false);
+    const [deletingCustomerId, setDeletingCustomerId] = useState<string | null>(null);
 
     const openCustomerDetails = useCallback((id: string) => {
         setSelectedCustomerId(id);
@@ -166,6 +170,46 @@ export default function CustomersPage() {
             alert(err.message);
         } finally {
             setSaveLoading(false);
+        }
+    };
+
+    const handleDeleteCustomer = async (customer: Pick<Customer, 'id' | 'company_name'>) => {
+        if (!isAdmin) return;
+
+        const firstConfirm = window.confirm(
+            `确定要永久删除客户档案“${customer.company_name}”吗？\n这会一并删除合同、账单、收款等关联记录，且不可撤销。`
+        );
+        if (!firstConfirm) return;
+
+        const typedName = window.prompt(`为防止误删，请输入客户名称“${customer.company_name}”后继续删除：`, '');
+        if (typedName !== customer.company_name) {
+            window.alert('输入的客户名称不匹配，已取消删除。');
+            return;
+        }
+
+        setDeletingCustomerId(customer.id);
+        try {
+            const res = await fetch(`/api/customers/${customer.id}`, { method: 'DELETE' });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                throw new Error(data.error || '删除客户档案失败');
+            }
+
+            if (selectedCustomerId === customer.id) {
+                setIsDetailModalOpen(false);
+                setSelectedCustomerId(null);
+                setDetailData(null);
+                setDetailError(null);
+                setIsEditing(false);
+                setIsEditingProfile(false);
+            }
+
+            fetchCustomers();
+        } catch (err: any) {
+            window.alert(err.message);
+        } finally {
+            setDeletingCustomerId(null);
         }
     };
 
@@ -517,6 +561,17 @@ export default function CustomersPage() {
                                                 <FileText className="w-3.5 h-3.5" />
                                                 详情
                                             </button>
+                                            {isAdmin && (
+                                                <button
+                                                    onClick={() => handleDeleteCustomer(customer)}
+                                                    disabled={deletingCustomerId === customer.id}
+                                                    className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-all border border-transparent hover:border-red-100 disabled:opacity-50"
+                                                    title="删除客户档案"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                    {deletingCustomerId === customer.id ? '删除中...' : '删除'}
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -784,6 +839,22 @@ export default function CustomersPage() {
                                                                         <div className="text-slate-800">{detailData.customer.source_info}</div>
                                                                     )}
                                                                 </div>
+                                                                {(isEditing || detailData.customer.source_remark) && (
+                                                                    <div className="md:col-span-2">
+                                                                        <label className="block text-sm font-medium text-slate-500 mb-1">来源备注</label>
+                                                                        {isEditing ? (
+                                                                            <input
+                                                                                type="text"
+                                                                                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                                                                                value={editData.source_remark || ''}
+                                                                                onChange={e => setEditData({ ...editData, source_remark: e.target.value })}
+                                                                                placeholder={getCustomerSourceRemarkPlaceholder(editData.source_info)}
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="text-slate-800 break-words">{detailData.customer.source_remark}</div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                                 <div>
                                                                     <label className="block text-sm font-medium text-slate-500 mb-1">客服经理</label>
                                                                     {isEditing ? (

@@ -9,10 +9,29 @@ function createAdminClient() {
     );
 }
 
+async function getCurrentUserRole() {
+    const supabase = await createServerClient();
+    const { data: { user }, error } = await supabase.auth.getUser();
+
+    if (error || !user) {
+        return { user: null, role: null };
+    }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    return {
+        user,
+        role: profile?.role?.toLowerCase() || null,
+    };
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const supabaseAuth = await createServerClient();
-        const { data: { user } } = await supabaseAuth.auth.getUser();
+        const { user } = await getCurrentUserRole();
         if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
 
         const { id } = await params;
@@ -75,8 +94,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const supabaseAuth = await createServerClient();
-        const { data: { user } } = await supabaseAuth.auth.getUser();
+        const { user } = await getCurrentUserRole();
         if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
 
         const { id } = await params;
@@ -93,6 +111,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             address,
             customer_status,
             source_info,
+            source_remark,
             service_manager,
             companyProfile,
             shareholder,
@@ -181,6 +200,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                 address,
                 customer_status,
                 source_info,
+                source_remark: source_remark || null,
                 service_manager
             })
             .eq('id', id)
@@ -192,6 +212,98 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         return NextResponse.json({ data });
+    } catch (err: any) {
+        return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    try {
+        const { user, role } = await getCurrentUserRole();
+        if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
+        if (role !== 'admin') {
+            return NextResponse.json({ error: '权限不足，仅管理员可删除客户档案' }, { status: 403 });
+        }
+
+        const { id } = await params;
+        if (!id) {
+            return NextResponse.json({ error: 'Missing customer ID' }, { status: 400 });
+        }
+
+        const supabase = createAdminClient();
+
+        const { data: customer, error: customerError } = await supabase
+            .from('customers')
+            .select('id, company_name')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (customerError) {
+            return NextResponse.json({ error: customerError.message }, { status: 500 });
+        }
+
+        if (!customer) {
+            return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+        }
+
+        const { data: contracts, error: contractsError } = await supabase
+            .from('customer_contracts')
+            .select('id')
+            .eq('customer_id', id);
+
+        if (contractsError) {
+            return NextResponse.json({ error: contractsError.message }, { status: 500 });
+        }
+
+        const contractIds = (contracts || []).map(contract => contract.id).filter(Boolean);
+
+        if (contractIds.length > 0) {
+            const { error } = await supabase
+                .from('customer_contract_files')
+                .delete()
+                .in('contract_id', contractIds);
+
+            if (error) {
+                return NextResponse.json({ error: `删除合同附件失败: ${error.message}` }, { status: 500 });
+            }
+        }
+
+        const deleteSteps = [
+            { table: 'collection_tasks', message: '删除催款任务失败' },
+            { table: 'payment_records', message: '删除收款记录失败' },
+            { table: 'expense_records', message: '删除成本记录失败' },
+            { table: 'customer_ad_hoc_services', message: '删除临时服务记录失败' },
+            { table: 'company_receivables', message: '删除应收账单失败' },
+            { table: 'customer_shareholders', message: '删除股东信息失败' },
+            { table: 'customer_company_profiles', message: '删除公司画像失败' },
+            { table: 'customer_churn_logs', message: '删除流失记录失败' },
+            { table: 'customer_contracts', message: '删除合同记录失败' },
+        ] as const;
+
+        for (const step of deleteSteps) {
+            const { error } = await supabase
+                .from(step.table)
+                .delete()
+                .eq('customer_id', id);
+
+            if (error) {
+                return NextResponse.json({ error: `${step.message}: ${error.message}` }, { status: 500 });
+            }
+        }
+
+        const { error: deleteCustomerError } = await supabase
+            .from('customers')
+            .delete()
+            .eq('id', id);
+
+        if (deleteCustomerError) {
+            return NextResponse.json({ error: `删除客户档案失败: ${deleteCustomerError.message}` }, { status: 500 });
+        }
+
+        return NextResponse.json({
+            success: true,
+            company_name: customer.company_name,
+        });
     } catch (err: any) {
         return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
     }
