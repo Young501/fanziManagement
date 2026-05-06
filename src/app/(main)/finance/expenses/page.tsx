@@ -484,6 +484,7 @@ function ExpenseHistoryContent() {
     const [page, setPage] = useState(1);
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('全部');
+    const [selectedMethod, setSelectedMethod] = useState('全部');
     const [role, setRole] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
@@ -507,7 +508,7 @@ function ExpenseHistoryContent() {
 
     const limit = 10;
 
-    useEffect(() => { fetchData(); }, [page, selectedMonth, selectedCategory]);
+    useEffect(() => { fetchData(); }, [page, selectedMonth, selectedCategory, selectedMethod]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -515,6 +516,7 @@ function ExpenseHistoryContent() {
             let url = `/api/finance/expenses/history?page=${page}&limit=${limit}`;
             if (selectedMonth) url += `&month=${selectedMonth}`;
             if (selectedCategory !== '全部') url += `&category=${encodeURIComponent(selectedCategory)}`;
+            if (selectedMethod !== '全部') url += `&method=${encodeURIComponent(selectedMethod)}`;
             
             const res = await fetch(url);
             const json = await res.json();
@@ -597,6 +599,38 @@ function ExpenseHistoryContent() {
         }
     };
 
+    const handleExport = async () => {
+        try {
+            let url = `/api/finance/expenses/history?page=1&limit=999999`;
+            if (selectedMonth) url += `&month=${selectedMonth}`;
+            if (selectedCategory !== '全部') url += `&category=${encodeURIComponent(selectedCategory)}`;
+            if (selectedMethod !== '全部') url += `&method=${encodeURIComponent(selectedMethod)}`;
+
+            const res = await fetch(url);
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+
+            const exportData = (json.data || []).map((item: any) => ({
+                '日期': item.expense_date,
+                '客户': item.customers?.company_name || '-',
+                '金额': item.expense_amount,
+                '类别': item.expense_category,
+                '类型': item.expense_type || '-',
+                '供应商': item.vendor_name || '-',
+                '付款方式': item.payment_method || '-',
+                '备注': item.note || '-'
+            }));
+
+            const XLSX = await import('xlsx');
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '成本记录');
+            XLSX.writeFile(wb, `成本记录_${new Date().toISOString().split('T')[0]}.xlsx`);
+        } catch (err: any) {
+            alert('导出失败: ' + err.message);
+        }
+    };
+
     const categoryColors: Record<string, { bg: string; text: string }> = {
         '办公费': { bg: 'bg-blue-50', text: 'text-blue-600' },
         '交通费': { bg: 'bg-cyan-50', text: 'text-cyan-600' },
@@ -671,6 +705,34 @@ function ExpenseHistoryContent() {
                                 ))}
                             </select>
                         </div>
+
+                        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+                        {/* Method Filter */}
+                        <div className="flex items-center gap-2 flex-1">
+                            <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">付款方式</span>
+                            <select
+                                value={selectedMethod}
+                                onChange={(e) => {
+                                    setSelectedMethod(e.target.value);
+                                    setPage(1);
+                                }}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-violet-600 outline-none bg-white min-w-[120px]"
+                            >
+                                <option value="全部">全部方式</option>
+                                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                        </div>
+
+                        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+                        {/* Export Button */}
+                        <button
+                            onClick={handleExport}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors text-sm font-medium whitespace-nowrap"
+                        >
+                            导出 Excel
+                        </button>
                     </div>
                 </div>
             </div>

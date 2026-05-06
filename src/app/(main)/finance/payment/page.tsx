@@ -66,6 +66,7 @@ type Receivable = {
     discount_gap: number | null;
     status: string;
     receipt_note?: string | null;
+    current_receipt_date?: string | null;
 };
 
 type RenewalFields = {
@@ -685,7 +686,10 @@ function PaymentEntryContent() {
                                                         <td className="py-3 px-4 text-right text-emerald-600 font-mono">{formatCurrency(r.amount_paid_period)}</td>
                                                         <td className="py-3 px-4 text-right font-bold font-mono text-slate-900">{formatCurrency(Math.max(0, rem))}</td>
                                                         <td className="py-3 px-4">
-                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold ${st.color} ${st.bg}`}>
+                                                            <span 
+                                                                className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold ${st.color} ${st.bg} ${isPaidOff && r.current_receipt_date ? 'cursor-help' : ''}`}
+                                                                title={isPaidOff && r.current_receipt_date ? `付清时间: ${formatDate(r.current_receipt_date)}` : undefined}
+                                                            >
                                                                 {st.label}
                                                             </span>
                                                         </td>
@@ -1365,6 +1369,7 @@ function PaymentHistoryContent() {
     const [page, setPage] = useState(1);
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedType, setSelectedType] = useState('全部'); // 全部, regular, adhoc
+    const [selectedMethod, setSelectedMethod] = useState('全部');
     const [search, setSearch] = useState('');
     const [role, setRole] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -1389,7 +1394,7 @@ function PaymentHistoryContent() {
             fetchData();
         }, 300);
         return () => clearTimeout(timer);
-    }, [page, selectedMonth, selectedType, search]);
+    }, [page, selectedMonth, selectedType, selectedMethod, search]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -1398,6 +1403,7 @@ function PaymentHistoryContent() {
             if (selectedMonth) url += `&month=${selectedMonth}`;
             if (selectedType === 'regular') url += `&paymentType=regular`;
             if (selectedType === 'adhoc') url += `&paymentType=adhoc`;
+            if (selectedMethod !== '全部') url += `&method=${encodeURIComponent(selectedMethod)}`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
 
             const res = await fetch(url);
@@ -1485,6 +1491,47 @@ function PaymentHistoryContent() {
         }
     };
 
+    const handleExport = async () => {
+        try {
+            let url = `/api/finance/payment/history?page=1&limit=999999`;
+            if (selectedMonth) url += `&month=${selectedMonth}`;
+            if (selectedType === 'regular') url += `&paymentType=regular`;
+            if (selectedType === 'adhoc') url += `&paymentType=adhoc`;
+            if (selectedMethod !== '全部') url += `&method=${encodeURIComponent(selectedMethod)}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+
+            const res = await fetch(url);
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+
+            const exportData = (json.data || []).map((item: any) => ({
+                '收款日期': item.paid_at,
+                '客户名称': item.customers?.company_name || (() => {
+                    if (item.customer_ad_hoc_services?.service_name) {
+                        return `单次: ${item.customer_ad_hoc_services.service_name}`;
+                    }
+                    if (!item.receivable_id && item.note && /(-|－)/.test(item.note)) {
+                        return `单次: ${item.note.split(/\s*[-－]\s*/)[0]}`;
+                    }
+                    return '无客户关联';
+                })(),
+                '收款金额': item.paid_amount,
+                '优惠金额': item.negotiated_discount_amount || 0,
+                '收款方式': item.method || '-',
+                '类型': item.receivable_id ? '常规/月费收款' : '一次性项目收款',
+                '备注': item.note || '-'
+            }));
+
+            const XLSX = await import('xlsx');
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '收款记录');
+            XLSX.writeFile(wb, `收款记录_${new Date().toISOString().split('T')[0]}.xlsx`);
+        } catch (err: any) {
+            alert('导出失败: ' + err.message);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Summary Card and Filter Bar */}
@@ -1551,6 +1598,24 @@ function PaymentHistoryContent() {
 
                         <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
 
+                        {/* Method Filter */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">收款方式</span>
+                            <select
+                                value={selectedMethod}
+                                onChange={(e) => {
+                                    setSelectedMethod(e.target.value);
+                                    setPage(1);
+                                }}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-600 outline-none bg-white min-w-[120px]"
+                            >
+                                <option value="全部">全部方式</option>
+                                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                        </div>
+
+                        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+
                         {/* Customer Name Search */}
                         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
                             <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">搜客户</span>
@@ -1578,6 +1643,16 @@ function PaymentHistoryContent() {
                                 )}
                             </div>
                         </div>
+
+                        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+                        {/* Export Button */}
+                        <button
+                            onClick={handleExport}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors text-sm font-medium whitespace-nowrap"
+                        >
+                            导出 Excel
+                        </button>
                     </div>
                 </div>
             </div>

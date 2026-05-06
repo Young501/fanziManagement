@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         const month = searchParams.get('month') || ''; // format: YYYY-MM
         const paymentType = searchParams.get('paymentType') || ''; // 'regular' | 'adhoc'
         const search = searchParams.get('search') || '';
+        const method = searchParams.get('method') || '';
 
         // Build base query (paginated)
         // Use !inner join when searching to allow filtering by customer company name, 
@@ -70,6 +71,11 @@ export async function GET(request: NextRequest) {
         // Apply customer search filter
         if (search) {
             query = query.ilike('customers.company_name', `%${search}%`);
+        }
+
+        // Apply payment method filter
+        if (method) {
+            query = query.eq('method', method);
         }
 
         // Apply ordering
@@ -106,6 +112,9 @@ export async function GET(request: NextRequest) {
         }
         if (search) {
             totalQuery = totalQuery.ilike('customers.company_name', `%${search}%`);
+        }
+        if (method) {
+            totalQuery = totalQuery.eq('method', method);
         }
 
         const { data: totalData } = await totalQuery;

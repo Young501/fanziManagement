@@ -25,7 +25,9 @@ function getCurrentMonth() {
 type ShareholderRow = {
     name: string;
     ratio: number; // 0-1
-    amount: number;
+    wechatAmount: number;
+    alipayAmount: number;
+    bankAmount: number;
     note: string;
 };
 
@@ -55,10 +57,10 @@ export default function DividendPage() {
     // --- 当月核算 state ---
     const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
     const [summaryLoading, setSummaryLoading] = useState(false);
-    const [summary, setSummary] = useState<{ revenue: number; cost: number; profit: number } | null>(null);
+    const [summary, setSummary] = useState<{ revenue: number; cost: number; profit: number; wechatRevenue?: number; alipayRevenue?: number } | null>(null);
     const [totalDividend, setTotalDividend] = useState('');
     const [rows, setRows] = useState<ShareholderRow[]>(
-        SHAREHOLDERS.map(s => ({ name: s.name, ratio: s.defaultRatio, amount: 0, note: '' }))
+        SHAREHOLDERS.map(s => ({ name: s.name, ratio: s.defaultRatio, wechatAmount: 0, alipayAmount: 0, bankAmount: 0, note: '' }))
     );
     const [note, setNote] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -101,6 +103,14 @@ export default function DividendPage() {
         setComputedTotals({ global, perPerson });
     }, [statsYear, allBatches, allDetailsHistory]);
 
+    const recalcRowAmounts = useCallback((ratio: number, totalDividendValue: number, currentSummary: typeof summary) => {
+        const wechatAmount = parseFloat(((currentSummary?.wechatRevenue || 0) * ratio).toFixed(2));
+        const alipayAmount = parseFloat(((currentSummary?.alipayRevenue || 0) * ratio).toFixed(2));
+        const total = parseFloat((totalDividendValue * ratio).toFixed(2));
+        const bankAmount = parseFloat((total - wechatAmount - alipayAmount).toFixed(2));
+        return { wechatAmount, alipayAmount, bankAmount };
+    }, []);
+
     // Fetch finance summary for selected month
     const fetchSummary = useCallback(async (month: string) => {
         setSummaryLoading(true);
@@ -116,7 +126,7 @@ export default function DividendPage() {
             setRows(SHAREHOLDERS.map(s => ({
                 name: s.name,
                 ratio: s.defaultRatio,
-                amount: parseFloat((profit * s.defaultRatio).toFixed(2)),
+                ...recalcRowAmounts(s.defaultRatio, profit, json),
                 note: ''
             })));
 
@@ -164,7 +174,7 @@ export default function DividendPage() {
         const total = parseFloat(val) || 0;
         setRows(prev => prev.map(r => ({
             ...r,
-            amount: parseFloat((total * r.ratio).toFixed(2))
+            ...recalcRowAmounts(r.ratio, total, summary)
         })));
     };
 
@@ -172,18 +182,79 @@ export default function DividendPage() {
     const handleRatioChange = (idx: number, val: string) => {
         const ratio = Math.min(1, Math.max(0, parseFloat(val) / 100 || 0));
         const total = parseFloat(totalDividend) || 0;
-        setRows(prev => prev.map((r, i) => i === idx
-            ? { ...r, ratio, amount: parseFloat((total * ratio).toFixed(2)) }
-            : r
-        ));
+        setRows(prev => prev.map((r, i) => i === idx ? {
+            ...r,
+            ratio,
+            ...recalcRowAmounts(ratio, total, summary)
+        } : r));
     };
 
-    // When an amount changes manually
-    const handleAmountChange = (idx: number, val: string) => {
-        setRows(prev => prev.map((r, i) => i === idx
-            ? { ...r, amount: parseFloat(val) || 0 }
-            : r
-        ));
+    const handleWechatChange = (idx: number, val: string) => {
+        setRows(prev => prev.map((r, i) => i === idx ? { ...r, wechatAmount: parseFloat(val) || 0 } : r));
+    };
+
+    const handleAlipayChange = (idx: number, val: string) => {
+        setRows(prev => prev.map((r, i) => i === idx ? { ...r, alipayAmount: parseFloat(val) || 0 } : r));
+    };
+
+    const handleBankChange = (idx: number, val: string) => {
+        setRows(prev => prev.map((r, i) => i === idx ? { ...r, bankAmount: parseFloat(val) || 0 } : r));
+    };
+
+    const handleRowTotalChange = (idx: number, val: string) => {
+        const newTotal = parseFloat(val) || 0;
+        setRows(prev => prev.map((r, i) => {
+            if (i !== idx) return r;
+            const wechatDefault = parseFloat(((summary?.wechatRevenue || 0) * r.ratio).toFixed(2));
+            const alipayDefault = parseFloat(((summary?.alipayRevenue || 0) * r.ratio).toFixed(2));
+
+            let wechat = wechatDefault;
+            let alipay = alipayDefault;
+            let bank = parseFloat((newTotal - wechat - alipay).toFixed(2));
+
+            if (bank < 0) {
+                let deficit = Math.abs(bank);
+                bank = 0;
+                
+                if (alipay >= deficit) {
+                    alipay = parseFloat((alipay - deficit).toFixed(2));
+                    deficit = 0;
+                } else {
+                    deficit = parseFloat((deficit - alipay).toFixed(2));
+                    alipay = 0;
+                    
+                    if (wechat >= deficit) {
+                        wechat = parseFloat((wechat - deficit).toFixed(2));
+                    } else {
+                        wechat = 0;
+                    }
+                }
+            }
+
+            return { ...r, wechatAmount: wechat, alipayAmount: alipay, bankAmount: bank };
+        }));
+    };
+
+    const handleMergeAlipayToWechat = (idx: number) => {
+        setRows(prev => prev.map((r, i) => {
+            if (i !== idx) return r;
+            return {
+                ...r,
+                wechatAmount: parseFloat((r.wechatAmount + r.alipayAmount).toFixed(2)),
+                alipayAmount: 0
+            };
+        }));
+    };
+
+    const handleMergeWechatToAlipay = (idx: number) => {
+        setRows(prev => prev.map((r, i) => {
+            if (i !== idx) return r;
+            return {
+                ...r,
+                alipayAmount: parseFloat((r.wechatAmount + r.alipayAmount).toFixed(2)),
+                wechatAmount: 0
+            };
+        }));
     };
 
     // When an individual note changes
@@ -208,12 +279,23 @@ export default function DividendPage() {
                     based_on_profit: summary?.profit || 0,
                     total_dividend_amount: parseFloat(totalDividend) || 0,
                     note: note || null,
-                    details: rows.map(r => ({
-                        shareholder_name: r.name,
-                        ratio: r.ratio,
-                        dividend_amount: r.amount,
-                        note: r.note || null,
-                    })),
+                    details: rows.map(r => {
+                        const rowTotal = r.wechatAmount + r.alipayAmount + r.bankAmount;
+                        const parts = [];
+                        if (r.wechatAmount !== 0) parts.push(`微信: ¥${r.wechatAmount}`);
+                        if (r.alipayAmount !== 0) parts.push(`支付宝: ¥${r.alipayAmount}`);
+                        if (r.bankAmount !== 0) parts.push(`银行: ¥${r.bankAmount}`);
+                        
+                        let combinedNote = parts.join(', ');
+                        if (r.note) combinedNote += ` | 备注: ${r.note}`;
+
+                        return {
+                            shareholder_name: r.name,
+                            ratio: r.ratio,
+                            dividend_amount: rowTotal,
+                            note: combinedNote,
+                        };
+                    }),
                 }),
             });
             const json = await res.json();
@@ -230,7 +312,7 @@ export default function DividendPage() {
     };
 
     const ratioSum = rows.reduce((s, r) => s + r.ratio, 0);
-    const amountSum = rows.reduce((s, r) => s + r.amount, 0);
+    const amountSum = rows.reduce((s, r) => s + r.wechatAmount + r.alipayAmount + r.bankAmount, 0);
 
     return (
         <div className="space-y-6">
@@ -273,6 +355,10 @@ export default function DividendPage() {
                                         <span className="text-xs font-semibold">总收款</span>
                                     </div>
                                     <div className="text-lg font-bold text-emerald-700 font-mono">{formatCurrency(summary.revenue)}</div>
+                                    <div className="text-[10px] text-emerald-600/70 mt-1 flex justify-center gap-2">
+                                        <span>微信: {formatCurrency(summary.wechatRevenue || 0)}</span>
+                                        <span>支付宝: {formatCurrency(summary.alipayRevenue || 0)}</span>
+                                    </div>
                                 </div>
                                 <div className="bg-rose-50 rounded-xl p-4 text-center">
                                     <div className="flex items-center justify-center gap-1 text-rose-600 mb-1">
@@ -341,45 +427,104 @@ export default function DividendPage() {
                                         <span className="text-xs text-slate-400 ml-1">可直接修改</span>
                                     </div>
                                     <div className="space-y-4">
-                                        {rows.map((row, idx) => (
-                                            <div key={row.name} className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100/50">
-                                                <div className="grid grid-cols-[1fr_80px_130px] gap-3 items-center mb-2.5">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-sm flex-shrink-0 shadow-sm">
-                                                            {row.name[0]}
+                                        {rows.map((row, idx) => {
+                                            const rowTotal = row.wechatAmount + row.alipayAmount + row.bankAmount;
+                                            const isDeviated = Math.abs(rowTotal - (parseFloat(totalDividend) || 0) * row.ratio) > 0.01;
+                                            return (
+                                                <div key={row.name} className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100/50">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-sm flex-shrink-0 shadow-sm">
+                                                                {row.name[0]}
+                                                            </div>
+                                                            <span className="font-semibold text-slate-800 text-sm">{row.name}</span>
                                                         </div>
-                                                        <span className="font-semibold text-slate-800 text-sm">{row.name}</span>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="relative w-24">
+                                                                <input
+                                                                    type="number" min="0" max="100" step="1"
+                                                                    value={(row.ratio * 100).toFixed(0)}
+                                                                    onChange={e => handleRatioChange(idx, e.target.value)}
+                                                                    className="w-full rounded-lg border border-slate-200 py-1.5 pl-2 pr-6 text-sm text-slate-700 focus:ring-2 focus:ring-amber-500 outline-none text-center font-mono"
+                                                                />
+                                                                <span className="absolute inset-y-0 right-2 flex items-center text-slate-400 text-xs">%</span>
+                                                            </div>
+                                                            <div className="relative w-28">
+                                                                <span className="absolute inset-y-0 left-2 flex items-center text-slate-400 text-xs font-bold">¥</span>
+                                                                <input
+                                                                    type="number" step="0.01"
+                                                                    value={rowTotal === 0 ? '' : rowTotal}
+                                                                    onChange={e => handleRowTotalChange(idx, e.target.value)}
+                                                                    className="w-full rounded-lg border border-slate-200 py-1.5 pl-5 pr-2 text-sm text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none font-mono text-right font-bold"
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="relative">
+                                                    
+                                                    {/* Three amount boxes */}
+                                                    <div className="grid grid-cols-3 gap-3 mb-2">
+                                                        <div className="relative">
+                                                            <span className="absolute inset-y-0 left-2 flex items-center text-emerald-600 text-[10px] font-semibold">微信</span>
+                                                            <input
+                                                                type="number" step="0.01"
+                                                                value={row.wechatAmount === 0 ? '' : row.wechatAmount}
+                                                                placeholder="0.00"
+                                                                onChange={e => handleWechatChange(idx, e.target.value)}
+                                                                className="w-full rounded-lg border border-emerald-200 bg-emerald-50/30 py-1.5 pl-10 pr-2 text-sm text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                                                            />
+                                                        </div>
+                                                        <div className="relative">
+                                                            <span className="absolute inset-y-0 left-2 flex items-center text-blue-600 text-[10px] font-semibold">支付宝</span>
+                                                            <input
+                                                                type="number" step="0.01"
+                                                                value={row.alipayAmount === 0 ? '' : row.alipayAmount}
+                                                                placeholder="0.00"
+                                                                onChange={e => handleAlipayChange(idx, e.target.value)}
+                                                                className="w-full rounded-lg border border-blue-200 bg-blue-50/30 py-1.5 pl-12 pr-2 text-sm text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                                                            />
+                                                        </div>
+                                                        <div className="relative">
+                                                            <span className="absolute inset-y-0 left-2 flex items-center text-slate-500 text-[10px] font-semibold">银行</span>
+                                                            <input
+                                                                type="number" step="0.01"
+                                                                value={row.bankAmount === 0 ? '' : row.bankAmount}
+                                                                placeholder="0.00"
+                                                                onChange={e => handleBankChange(idx, e.target.value)}
+                                                                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-10 pr-2 text-sm text-slate-700 focus:ring-2 focus:ring-amber-500 outline-none font-mono"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Merge options */}
+                                                    <div className="flex gap-2 mb-2">
+                                                        <button
+                                                            onClick={() => handleMergeAlipayToWechat(idx)}
+                                                            disabled={row.alipayAmount === 0}
+                                                            className="text-[10px] px-2 py-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                        >
+                                                            支付宝合并至微信
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleMergeWechatToAlipay(idx)}
+                                                            disabled={row.wechatAmount === 0}
+                                                            className="text-[10px] px-2 py-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                        >
+                                                            微信合并至支付宝
+                                                        </button>
+                                                    </div>
+
+                                                    {isDeviated && (
                                                         <input
-                                                            type="number" min="0" max="100" step="1"
-                                                            value={(row.ratio * 100).toFixed(0)}
-                                                            onChange={e => handleRatioChange(idx, e.target.value)}
-                                                            className="w-full rounded-lg border border-slate-200 py-1.5 pl-2 pr-6 text-sm text-slate-700 focus:ring-2 focus:ring-amber-500 outline-none text-center font-mono"
+                                                            type="text"
+                                                            value={row.note}
+                                                            onChange={e => handleIndividualNoteChange(idx, e.target.value)}
+                                                            placeholder={`金额偏离默认计算，请备注原因...`}
+                                                            className="w-full bg-white rounded-lg border border-amber-200 py-1.5 px-3 text-xs text-amber-600 focus:ring-2 focus:ring-amber-500 outline-none placeholder:text-amber-300 mt-1 animate-in fade-in slide-in-from-top-1 duration-200"
                                                         />
-                                                        <span className="absolute inset-y-0 right-2 flex items-center text-slate-400 text-xs">%</span>
-                                                    </div>
-                                                    <div className="relative">
-                                                        <span className="absolute inset-y-0 left-2 flex items-center text-slate-400 text-xs">¥</span>
-                                                        <input
-                                                            type="number" min="0" step="0.01"
-                                                            value={row.amount}
-                                                            onChange={e => handleAmountChange(idx, e.target.value)}
-                                                            className="w-full rounded-lg border border-slate-200 py-1.5 pl-5 pr-2 text-sm text-slate-700 focus:ring-2 focus:ring-amber-500 outline-none font-mono"
-                                                        />
-                                                    </div>
+                                                    )}
                                                 </div>
-                                                {Math.abs(row.amount - (parseFloat(totalDividend) || 0) * row.ratio) > 0.01 && (
-                                                    <input
-                                                        type="text"
-                                                        value={row.note}
-                                                        onChange={e => handleIndividualNoteChange(idx, e.target.value)}
-                                                        placeholder={`金额偏离默认计算，请备注原因...`}
-                                                        className="w-full bg-white rounded-lg border border-blue-200 py-1.5 px-3 text-xs text-blue-600 focus:ring-2 focus:ring-amber-500 outline-none placeholder:text-blue-200 mt-2 animate-in fade-in slide-in-from-top-1 duration-200"
-                                                    />
-                                                )}
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                     {/* Ratio/amount validation hints */}
                                     <div className="flex items-center justify-between mt-2 px-1">
@@ -574,7 +719,7 @@ export default function DividendPage() {
                                 {rows.map(r => (
                                     <div key={r.name} className="flex justify-between text-sm bg-slate-50 px-3 py-2 rounded-lg">
                                         <span className="font-medium text-slate-700">{r.name} ({(r.ratio * 100).toFixed(0)}%)</span>
-                                        <span className="font-bold font-mono text-slate-900">{formatCurrency(r.amount)}</span>
+                                        <span className="font-bold font-mono text-slate-900">{formatCurrency(r.wechatAmount + r.alipayAmount + r.bankAmount)}</span>
                                     </div>
                                 ))}
                             </div>

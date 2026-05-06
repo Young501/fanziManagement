@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         // Fetch revenue from payment_records
         const { data: paymentData, error: paymentError } = await supabaseAdmin
             .from('payment_records')
-            .select('paid_amount')
+            .select('paid_amount, method')
             .gte('paid_at', startDate)
             .lt('paid_at', endDate);
 
@@ -41,6 +41,12 @@ export async function GET(request: NextRequest) {
         }
 
         const revenue = (paymentData || []).reduce((sum, r) => sum + (Number(r.paid_amount) || 0), 0);
+        const wechatRevenue = (paymentData || [])
+            .filter(r => r.method === '微信支付')
+            .reduce((sum, r) => sum + (Number(r.paid_amount) || 0), 0);
+        const alipayRevenue = (paymentData || [])
+            .filter(r => r.method === '支付宝')
+            .reduce((sum, r) => sum + (Number(r.paid_amount) || 0), 0);
 
         // Fetch cost from expense_records
         const { data: expenseData, error: expenseError } = await supabaseAdmin
@@ -56,7 +62,7 @@ export async function GET(request: NextRequest) {
         const cost = (expenseData || []).reduce((sum, r) => sum + (Number(r.expense_amount) || 0), 0);
         const profit = revenue - cost;
 
-        return NextResponse.json({ revenue, cost, profit });
+        return NextResponse.json({ revenue, cost, profit, wechatRevenue, alipayRevenue });
     } catch (err: any) {
         return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
     }

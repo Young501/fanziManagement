@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         const start = (page - 1) * limit;
         const month = searchParams.get('month') || ''; // format: YYYY-MM
         const category = searchParams.get('category') || '';
+        const method = searchParams.get('method') || '';
 
         // Build base query (paginated)
         let query = supabaseAdmin
@@ -60,6 +61,11 @@ export async function GET(request: NextRequest) {
             query = query.eq('expense_category', category);
         }
 
+        // Apply payment method filter
+        if (method) {
+            query = query.eq('payment_method', method);
+        }
+
         const { data, count, error } = await query.range(start, start + limit - 1);
 
         if (error) {
@@ -81,6 +87,9 @@ export async function GET(request: NextRequest) {
         }
         if (category) {
             totalQuery = totalQuery.eq('expense_category', category);
+        }
+        if (method) {
+            totalQuery = totalQuery.eq('payment_method', method);
         }
 
         const { data: totalData } = await totalQuery;
