@@ -1,5 +1,6 @@
 ﻿import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { calculateReceivableStatus } from '@/lib/finance-status';
 
 function createAdminClient() {
     return createClient(
@@ -38,7 +39,16 @@ export async function GET(request: NextRequest) {
         }
 
         const now = Date.now();
-        const sorted = (data || []).sort((a: any, b: any) => {
+        const withDerivedStatus = (data || []).map((item: any) => ({
+            ...item,
+            status: calculateReceivableStatus(
+                Number(item.amount_paid_period || 0),
+                Number(item.amount_payable_period || 0),
+                item.payment_due_date
+            ),
+        }));
+
+        const sorted = withDerivedStatus.sort((a: any, b: any) => {
             const aRemaining = Number(a.amount_payable_period || 0) - Number(a.amount_paid_period || 0);
             const bRemaining = Number(b.amount_payable_period || 0) - Number(b.amount_paid_period || 0);
             const aOverdue = a.payment_due_date ? new Date(a.payment_due_date).getTime() < now : false;

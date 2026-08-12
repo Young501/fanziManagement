@@ -8,6 +8,8 @@ import {
     AlertCircle, ExternalLink, History, TrendingDown, Filter, Edit2, Eye
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
+import { EXPENSE_CATEGORIES } from '@/lib/expense-categories';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 // Compress an image File to JPEG via Canvas
 async function compressImage(file: File, maxW = 1200, quality = 0.75): Promise<Blob> {
@@ -41,7 +43,6 @@ type Customer = {
     contact_info: string | null;
 };
 
-const EXPENSE_CATEGORIES = ['办公用品费', '水费', '电费', '交通费', '汽油费', '物业费', '汽车费', '社保费', '兼职工资', '外包代办费', '招待费', '其他'];
 const PAYMENT_METHODS = ['转账', '微信支付', '支付宝', '现金', '银行汇款', '其他'];
 
 function formatCurrency(val: number | null | undefined) {
@@ -64,7 +65,7 @@ function ExpenseEntryContent() {
 
     const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().split('T')[0]);
     const [expenseAmount, setExpenseAmount] = useState('');
-    const [expenseCategory, setExpenseCategory] = useState('办公费');
+    const [expenseCategory, setExpenseCategory] = useState('办公用品费');
     const [expenseType, setExpenseType] = useState('');
     const [vendorName, setVendorName] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('微信支付');
@@ -213,7 +214,7 @@ function ExpenseEntryContent() {
         clearCustomer();
         setExpenseDate(new Date().toISOString().split('T')[0]);
         setExpenseAmount('');
-        setExpenseCategory('办公费');
+        setExpenseCategory('办公用品费');
         setExpenseType('');
         setVendorName('');
         setPaymentMethod('微信支付');
@@ -477,6 +478,8 @@ function ExpenseEntryContent() {
 
 // ─── History Tab Content ───────────────────────────────────────────────────
 function ExpenseHistoryContent() {
+    const toast = useToast();
+    const confirm = useConfirm();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any[]>([]);
     const [count, setCount] = useState(0);
@@ -533,7 +536,15 @@ function ExpenseHistoryContent() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!window.confirm('确定要删除这条成本记录吗？\n此操作不可撤销。')) return;
+        const ok = await confirm({
+            title: '撤销这条成本记录？',
+            description: '这会删除该成本流水，并同步刷新统计金额。',
+            confirmLabel: '撤销成本',
+            cancelLabel: '取消',
+            variant: 'danger',
+        });
+        if (!ok) return;
+
         setDeleteLoading(id);
         try {
             const res = await fetch(`/api/finance/expenses/history?id=${id}`, { method: 'DELETE' });
@@ -544,8 +555,9 @@ function ExpenseHistoryContent() {
             // Optionally update totalAmount if we have the amount of deleted record
             const deleted = data.find(d => d.id === id);
             if (deleted) setTotalAmount(prev => prev - (deleted.expense_amount || 0));
+            toast.success({ title: '成本记录已撤销', description: '列表和合计金额已更新。' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '撤销失败', description: err.message });
         } finally {
             setDeleteLoading(null);
         }
@@ -556,7 +568,7 @@ function ExpenseHistoryContent() {
         setEditForm({
             expense_date: record.expense_date || '',
             expense_amount: record.expense_amount?.toString() || '0',
-            expense_category: record.expense_category || '办公费',
+            expense_category: record.expense_category || '办公用品费',
             expense_type: record.expense_type || '',
             vendor_name: record.vendor_name || '',
             payment_method: record.payment_method || '微信支付',
@@ -592,8 +604,9 @@ function ExpenseHistoryContent() {
             }));
             setEditRecord(null);
             fetchData();
+            toast.success({ title: '成本记录已更新', description: '成本类别、金额和付款信息已同步。' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '更新失败', description: err.message });
         } finally {
             setEditSubmitting(false);
         }
@@ -627,16 +640,32 @@ function ExpenseHistoryContent() {
             XLSX.utils.book_append_sheet(wb, ws, '成本记录');
             XLSX.writeFile(wb, `成本记录_${new Date().toISOString().split('T')[0]}.xlsx`);
         } catch (err: any) {
-            alert('导出失败: ' + err.message);
+            toast.error({ title: '导出失败', description: err.message });
         }
     };
 
     const categoryColors: Record<string, { bg: string; text: string }> = {
-        '办公费': { bg: 'bg-blue-50', text: 'text-blue-600' },
-        '交通费': { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+        '办公用品费': { bg: 'bg-blue-50', text: 'text-blue-600' },
+        '水费': { bg: 'bg-cyan-50', text: 'text-cyan-700' },
+        '电费': { bg: 'bg-yellow-50', text: 'text-yellow-700' },
+        '交通费': { bg: 'bg-sky-50', text: 'text-sky-700' },
+        '汽油费': { bg: 'bg-orange-50', text: 'text-orange-700' },
+        '物业费': { bg: 'bg-teal-50', text: 'text-teal-700' },
+        '汽车费': { bg: 'bg-rose-50', text: 'text-rose-700' },
+        '社保费': { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+        '兼职工资': { bg: 'bg-indigo-50', text: 'text-indigo-600' },
+        '外包代办费': { bg: 'bg-purple-50', text: 'text-purple-600' },
+        '招待费': { bg: 'bg-pink-50', text: 'text-pink-600' },
+        '差旅费': { bg: 'bg-sky-50', text: 'text-sky-600' },
+        '房租': { bg: 'bg-violet-50', text: 'text-violet-600' },
+        '通讯费': { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+        '软件服务费': { bg: 'bg-indigo-50', text: 'text-indigo-600' },
+        '快递物流费': { bg: 'bg-lime-50', text: 'text-lime-700' },
+        '培训费': { bg: 'bg-fuchsia-50', text: 'text-fuchsia-600' },
+        '税费': { bg: 'bg-red-50', text: 'text-red-600' },
+        '银行手续费': { bg: 'bg-slate-50', text: 'text-slate-600' },
         '社保公积金': { bg: 'bg-emerald-50', text: 'text-emerald-600' },
         '工资': { bg: 'bg-indigo-50', text: 'text-indigo-600' },
-        '税费': { bg: 'bg-amber-50', text: 'text-amber-600' },
         '外包服务费': { bg: 'bg-purple-50', text: 'text-purple-600' },
         '其他': { bg: 'bg-slate-100', text: 'text-slate-600' },
     };

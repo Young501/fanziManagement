@@ -1,6 +1,9 @@
 import { createClient as createServerClient } from '@/utils/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { isValidExpenseCategory, normalizeExpenseCategory } from '@/lib/expense-categories';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function createAdminClient() {
     return createClient(
@@ -116,7 +119,6 @@ export async function DELETE(request: NextRequest) {
         if (!id) {
             return NextResponse.json({ error: '缺失记录ID' }, { status: 400 });
         }
-        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!UUID_RE.test(id)) {
             return NextResponse.json({ error: '无效的记录ID格式' }, { status: 400 });
         }
@@ -160,17 +162,53 @@ export async function PATCH(request: NextRequest) {
         if (!id) {
             return NextResponse.json({ error: '缺失记录ID' }, { status: 400 });
         }
+        if (!UUID_RE.test(String(id))) {
+            return NextResponse.json({ error: '无效的记录ID格式' }, { status: 400 });
+        }
 
         const supabase = createAdminClient();
 
         const updates: any = {};
-        if (expense_date !== undefined) updates.expense_date = expense_date;
-        if (expense_amount !== undefined) updates.expense_amount = parseFloat(expense_amount);
-        if (expense_category !== undefined) updates.expense_category = expense_category;
-        if (expense_type !== undefined) updates.expense_type = expense_type;
-        if (vendor_name !== undefined) updates.vendor_name = vendor_name;
-        if (payment_method !== undefined) updates.payment_method = payment_method;
-        if (note !== undefined) updates.note = note;
+        if (expense_date !== undefined) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(expense_date)) || Number.isNaN(new Date(`${expense_date}T00:00:00`).getTime())) {
+                return NextResponse.json({ error: '费用日期不正确' }, { status: 400 });
+            }
+            updates.expense_date = expense_date;
+        }
+        if (expense_amount !== undefined) {
+            const amount = Number(expense_amount);
+            if (!Number.isFinite(amount) || amount <= 0) {
+                return NextResponse.json({ error: '费用金额必须大于0' }, { status: 400 });
+            }
+            updates.expense_amount = amount;
+        }
+        if (expense_category !== undefined) {
+            const normalizedCategory = normalizeExpenseCategory(expense_category);
+            if (!isValidExpenseCategory(normalizedCategory)) {
+                return NextResponse.json({ error: '无效的费用类别' }, { status: 400 });
+            }
+            updates.expense_category = normalizedCategory;
+        }
+        if (expense_type !== undefined) {
+            if (String(expense_type).length > 100) return NextResponse.json({ error: '费用类型过长' }, { status: 400 });
+            updates.expense_type = expense_type || null;
+        }
+        if (vendor_name !== undefined) {
+            if (String(vendor_name).length > 200) return NextResponse.json({ error: '供应商名称过长' }, { status: 400 });
+            updates.vendor_name = vendor_name || null;
+        }
+        if (payment_method !== undefined) {
+            if (String(payment_method).length > 50) return NextResponse.json({ error: '付款方式长度超限' }, { status: 400 });
+            updates.payment_method = payment_method || null;
+        }
+        if (note !== undefined) {
+            if (String(note).length > 1000) return NextResponse.json({ error: '备注过长' }, { status: 400 });
+            updates.note = note || null;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ error: '没有可更新的字段' }, { status: 400 });
+        }
 
         const { error } = await supabase
             .from('expense_records')

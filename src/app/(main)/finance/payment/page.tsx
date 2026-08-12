@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { MaskedContact } from '@/components/ui/MaskedContact';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 // Compress an image File to JPEG via Canvas, max width 1200px, quality 0.75
 async function compressImage(file: File, maxW = 1200, quality = 0.75): Promise<Blob> {
@@ -119,6 +120,7 @@ function calcDerivedStatus(paid: number, payable: number, dueDate: string) {
 }
 
 function PaymentEntryContent() {
+    const toast = useToast();
     const searchParams = useSearchParams();
     const initCustomerName = searchParams.get('customer_name');
     const taskId = searchParams.get('task_id');
@@ -381,7 +383,8 @@ function PaymentEntryContent() {
                 setUploading(true);
                 try {
                     const compressed = await compressImage(screenshotFile);
-                    const filename = `${selectedCustomer!.id}/${Date.now()}.jpg`;
+                    const ownerFolder = selectedCustomer?.id || 'adhoc-unassigned';
+                    const filename = `${ownerFolder}/${Date.now()}.jpg`;
                     const supabase = createClient();
                     const { error: uploadError } = await supabase.storage
                         .from('payment-screenshots')
@@ -410,8 +413,8 @@ function PaymentEntryContent() {
                 payload.ad_hoc_service_name = adHocServiceName;
             } else {
                 payload.receivable_id = selectedReceivable!.id;
-                payload.discounted_payable = discountedPayable;
-                payload.discount_reason = discountReason;
+                if (discountedPayable !== null) payload.discounted_payable = discountedPayable;
+                if (discountReason.trim()) payload.discount_reason = discountReason.trim();
 
                 // Determine if we should send renewal info
                 const targetPayable = discountedPayable !== null ? discountedPayable : selectedReceivable!.amount_payable_period;
@@ -455,12 +458,20 @@ function PaymentEntryContent() {
                 return;
             }
 
+            if (Array.isArray(json.warnings) && json.warnings.length > 0) {
+                toast.warning({ title: '收款已登记，但有附加事项需要处理', description: json.warnings.join('；') });
+            } else {
+                toast.success({ title: '收款登记成功' });
+            }
+
             // Auto complete collection task if taskId is provided AND the receivable is fully paid
             // We use the same isFinishing logic but calculated per-payment.
-            const targetPayableForCheck = discountedPayable !== null ? discountedPayable : selectedReceivable!.amount_payable_period;
-            const paidSoFarForCheck = selectedReceivable!.amount_paid_period || 0;
+            const targetPayableForCheck = selectedReceivable
+                ? discountedPayable !== null ? discountedPayable : selectedReceivable.amount_payable_period
+                : 0;
+            const paidSoFarForCheck = selectedReceivable?.amount_paid_period || 0;
             const remainingToPayForCheck = targetPayableForCheck - paidSoFarForCheck;
-            const isFinishingCheck = isAdHoc || (parseFloat(paidAmount) || 0) >= remainingToPayForCheck - 0.01;
+            const isFinishingCheck = isAdHoc || (!!selectedReceivable && (parseFloat(paidAmount) || 0) >= remainingToPayForCheck - 0.01);
 
             if (taskId && isFinishingCheck) {
                 try {
@@ -1362,6 +1373,8 @@ function PaymentEntryContent() {
 
 // ─── History Tab Content ───────────────────────────────────────────────────
 function PaymentHistoryContent() {
+    const toast = useToast();
+    const confirm = useConfirm();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any[]>([]);
     const [count, setCount] = useState(0);
@@ -1421,7 +1434,15 @@ function PaymentHistoryContent() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!window.confirm('确定要删除这条收款记录吗？\n删除后系统将尝试回退对应账单的已收金额。此操作不可撤销。')) return;
+        const ok = await confirm({
+            title: '撤销这条收款记录？',
+            description: '系统会回退对应账单的已收金额、重算账单状态，并尝试删除这笔收款自动生成的下一期账单。',
+            confirmLabel: '撤销收款',
+            cancelLabel: '取消',
+            variant: 'danger',
+        });
+        if (!ok) return;
+
         setDeleteLoading(id);
         try {
             const res = await fetch(`/api/finance/payment/history?id=${id}`, { method: 'DELETE' });
@@ -1432,8 +1453,13 @@ function PaymentHistoryContent() {
             // Update total locally
             const deleted = data.find(d => d.id === id);
             if (deleted) setTotalAmount(prev => prev - (deleted.paid_amount || 0));
+            if (json.warnings?.length) {
+                toast.warning({ title: '收款已撤销', description: json.warnings.join('；') });
+            } else {
+                toast.success({ title: '收款已撤销', description: '关联账单金额与状态已重新计算。' });
+            }
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '撤销失败', description: err.message });
         } finally {
             setDeleteLoading(null);
         }
@@ -1484,8 +1510,13 @@ function PaymentHistoryContent() {
             }));
             setEditRecord(null);
             fetchData(); // Full refresh to update totals if amount changed
+            if (json.warnings?.length) {
+                toast.warning({ title: '收款记录已更新', description: json.warnings.join('；') });
+            } else {
+                toast.success({ title: '收款记录已更新', description: '关联账单金额、状态与最近收款信息已同步。' });
+            }
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '更新失败', description: err.message });
         } finally {
             setEditSubmitting(false);
         }
@@ -1528,7 +1559,7 @@ function PaymentHistoryContent() {
             XLSX.utils.book_append_sheet(wb, ws, '收款记录');
             XLSX.writeFile(wb, `收款记录_${new Date().toISOString().split('T')[0]}.xlsx`);
         } catch (err: any) {
-            alert('导出失败: ' + err.message);
+            toast.error({ title: '导出失败', description: err.message });
         }
     };
 

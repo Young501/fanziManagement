@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserMinus, AlertCircle, X, History, Trash2, Loader2 } from 'lucide-react';
 import Select from 'react-select';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 export default function ChurnRegistrationPage() {
     const router = useRouter();
+    const toast = useToast();
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState<'form' | 'history'>('form');
 
     const [customers, setCustomers] = useState<{ id: string, company_name: string }[]>([]);
@@ -78,7 +81,13 @@ export default function ChurnRegistrationPage() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('确定要删除这条记录吗？该操作不可撤销。')) return;
+        const ok = await confirm({
+            title: '删除这条流失记录？',
+            description: '删除历史记录不会自动恢复客户状态。该操作不可撤销。',
+            confirmLabel: '删除记录',
+            variant: 'danger',
+        });
+        if (!ok) return;
 
         try {
             const res = await fetch(`/api/customers/churn/history?id=${id}`, {
@@ -89,21 +98,42 @@ export default function ChurnRegistrationPage() {
                 throw new Error(data.error || '删除失败');
             }
             fetchHistory();
+            toast.success({ title: '流失记录已删除' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '删除失败', description: err.message });
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedCustomerId || !churnReason) {
-            setError('请选择客户并填写流失核心原因');
+    const handleSubmit = async () => {
+        if (!selectedCustomerId || !churnReason.trim()) {
+            const message = '请选择客户并填写流失核心原因';
+            setError(message);
+            toast.warning({ title: '流失登记信息不完整', description: message });
             return;
         }
 
-        if (!confirm('请确认流失登记信息填写无误。\n\n提交后该客户状态将自动更新为“流失”，确定提交吗？')) {
+        if (!churnDate || Number.isNaN(new Date(churnDate).getTime())) {
+            const message = '请选择有效的流失日期';
+            setError(message);
+            toast.warning({ title: '流失登记信息不完整', description: message });
             return;
         }
+
+        if (lastServiceDate && Number.isNaN(new Date(lastServiceDate).getTime())) {
+            const message = '请选择有效的最后服务日期';
+            setError(message);
+            toast.warning({ title: '流失登记信息不完整', description: message });
+            return;
+        }
+
+        const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
+        const ok = await confirm({
+            title: '确认登记客户流失？',
+            description: `提交后，“${selectedCustomer?.company_name || '该客户'}”会被标记为流失，并清理未完成的催款任务。`,
+            confirmLabel: '确认流失',
+            variant: 'danger',
+        });
+        if (!ok) return;
 
         setSubmitting(true);
         setError(null);
@@ -129,6 +159,13 @@ export default function ChurnRegistrationPage() {
                 throw new Error(data.error || '登记失败');
             }
 
+            const data = await res.json();
+            if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+                toast.warning({ title: '流失已登记，但有附加事项需要处理', description: data.warnings.join('；') });
+            } else {
+                toast.success({ title: '流失登记成功', description: selectedCustomer?.company_name });
+            }
+
             setShowSuccess(true);
             setTimeout(() => {
                 setShowSuccess(false);
@@ -140,9 +177,10 @@ export default function ChurnRegistrationPage() {
             setChurnType('');
             setChurnReason('');
             setNote('');
-            setSubmitting(false);
         } catch (err: any) {
             setError(err.message);
+            toast.error({ title: '流失登记失败', description: err.message });
+        } finally {
             setSubmitting(false);
         }
     };

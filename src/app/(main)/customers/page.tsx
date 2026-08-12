@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Search, FileText, UserMinus, Filter, X, ChevronLeft, ChevronRight, Users, TrendingUp, TrendingDown, Minus, Building2, Trash2 } from 'lucide-react';
+import { Plus, Search, FileText, Filter, X, ChevronLeft, ChevronRight, Users, TrendingUp, TrendingDown, Minus, Building2, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from 'next/link';
 import { MaskedContact } from '@/components/ui/MaskedContact';
 import { getCustomerSourceRemarkPlaceholder } from '@/lib/customer-source';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 // City prefixes to skip when picking avatar character
 const CITY_PREFIXES = ['上海', '广州', '深圳', '北京', '杭州', '南京', '苏州', '成都', '武汉', '天津'];
@@ -45,6 +46,8 @@ type PaginatedResponse = {
 const LIMIT = 10;
 
 export default function CustomersPage() {
+    const toast = useToast();
+    const confirm = useConfirm();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
@@ -60,8 +63,10 @@ export default function CustomersPage() {
                 const role = data.user?.role || data.role;
                 if (role) setUserRole(role);
             })
-            .catch(console.error);
-    }, []);
+            .catch(() => {
+                toast.warning({ title: '账户信息读取失败', description: '部分管理操作可能暂时不可用。' });
+            });
+    }, [toast]);
 
     const isManagerOrAdmin = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'admin';
     const isAdmin = userRole?.toLowerCase() === 'admin';
@@ -83,6 +88,14 @@ export default function CustomersPage() {
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        const initialSearch = new URLSearchParams(window.location.search).get('search')?.trim() || '';
+        if (initialSearch) {
+            setSearchInput(initialSearch);
+            setSearch(initialSearch);
+        }
+    }, []);
 
     const [serviceManagers, setServiceManagers] = useState<string[]>([]);
     const [selectedManager, setSelectedManager] = useState('');
@@ -120,18 +133,35 @@ export default function CustomersPage() {
                 setDetailData(res);
                 setEditData(res.customer); // Pre-fill edit form
             })
-            .catch(err => setDetailError(err.message))
+            .catch(err => {
+                const message = err instanceof Error ? err.message : '客户详情加载失败';
+                setDetailError(message);
+                toast.error({ title: '客户详情加载失败', description: message });
+            })
             .finally(() => setDetailLoading(false));
-    }, []);
+    }, [toast]);
 
     const handleSaveEdit = async () => {
         if (!selectedCustomerId || !editData) return;
+        const nextCompanyName = String(editData.company_name || '').trim();
+        const nextContactPerson = String(editData.contact_person || '').trim();
+
+        if (!nextCompanyName || !nextContactPerson) {
+            toast.warning({ title: '请补全必填信息', description: '企业名称和联系人不能为空。' });
+            return;
+        }
+
+        if (editData.customer_status === '流失') {
+            toast.warning({ title: '请使用流失登记流程', description: '流失客户需要记录流失日期和原因，不能在基础档案里直接修改。' });
+            return;
+        }
+
         setSaveLoading(true);
         try {
             const res = await fetch(`/api/customers/${selectedCustomerId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(editData),
+                body: JSON.stringify({ ...editData, company_name: nextCompanyName, contact_person: nextContactPerson }),
             });
             if (!res.ok) {
                 const data = await res.json();
@@ -142,8 +172,9 @@ export default function CustomersPage() {
             setIsEditing(false);
             openCustomerDetails(selectedCustomerId);
             fetchCustomers();
+            toast.success({ title: '客户档案已保存' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '保存客户档案失败', description: err.message });
         } finally {
             setSaveLoading(false);
         }
@@ -151,6 +182,12 @@ export default function CustomersPage() {
 
     const handleSaveProfile = async () => {
         if (!selectedCustomerId || !editProfileData) return;
+        const registeredCapitalValue = Number(editProfileData.registered_capital || 0);
+        if (editProfileData.registered_capital && registeredCapitalValue < 0) {
+            toast.warning({ title: '注册资本不能为负数' });
+            return;
+        }
+
         setSaveLoading(true);
         try {
             const res = await fetch(`/api/customers/${selectedCustomerId}`, {
@@ -166,8 +203,9 @@ export default function CustomersPage() {
             // Refresh detail data
             setIsEditingProfile(false);
             openCustomerDetails(selectedCustomerId);
+            toast.success({ title: '公司画像已保存' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '保存公司画像失败', description: err.message });
         } finally {
             setSaveLoading(false);
         }
@@ -176,16 +214,15 @@ export default function CustomersPage() {
     const handleDeleteCustomer = async (customer: Pick<Customer, 'id' | 'company_name'>) => {
         if (!isAdmin) return;
 
-        const firstConfirm = window.confirm(
-            `确定要永久删除客户档案“${customer.company_name}”吗？\n这会一并删除合同、账单、收款等关联记录，且不可撤销。`
-        );
-        if (!firstConfirm) return;
-
-        const typedName = window.prompt(`为防止误删，请输入客户名称“${customer.company_name}”后继续删除：`, '');
-        if (typedName !== customer.company_name) {
-            window.alert('输入的客户名称不匹配，已取消删除。');
-            return;
-        }
+        const ok = await confirm({
+            title: '永久删除客户档案？',
+            description: `这会一并删除“${customer.company_name}”的合同、账单、收款、成本、催款任务等关联记录，删除后不可恢复。`,
+            confirmLabel: '永久删除',
+            variant: 'danger',
+            requireText: customer.company_name,
+            requireTextLabel: '输入完整客户名称后继续',
+        });
+        if (!ok) return;
 
         setDeletingCustomerId(customer.id);
         try {
@@ -206,8 +243,9 @@ export default function CustomersPage() {
             }
 
             fetchCustomers();
+            toast.success({ title: '客户档案已删除', description: customer.company_name });
         } catch (err: any) {
-            window.alert(err.message);
+            toast.error({ title: '删除客户档案失败', description: err.message });
         } finally {
             setDeletingCustomerId(null);
         }
@@ -255,11 +293,16 @@ export default function CustomersPage() {
                 service_manager: selectedManager,
             });
             const res = await fetch(`/api/customers?${params.toString()}`);
-            if (!res.ok) throw new Error(`Error ${res.status}`);
-            const json: PaginatedResponse = await res.json();
-            setCustomers(json.data);
-            setTotal(json.total);
-            setTotalPages(json.totalPages);
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || `加载失败 (${res.status})`);
+            const payload = json as PaginatedResponse;
+            if (payload.totalPages > 0 && page > payload.totalPages) {
+                setPage(payload.totalPages);
+                return;
+            }
+            setCustomers(payload.data);
+            setTotal(payload.total);
+            setTotalPages(payload.totalPages);
         } catch (err: any) {
             setError(err.message ?? '加载失败');
         } finally {
@@ -331,6 +374,13 @@ export default function CustomersPage() {
                     <p className="text-sm text-slate-500 mt-1">管理客户基本信息、联系人及服务状态，全面掌握客户动态。</p>
                 </div>
                 <div className="flex gap-3 w-full sm:w-auto">
+                    <Link
+                        href="/customers/new"
+                        className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
+                    >
+                        <Plus className="mr-2 h-4 w-4" />
+                        新增客户
+                    </Link>
                     {/* Finance Filter Button */}
                     <div className="relative" ref={filterRef}>
                         <button

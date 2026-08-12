@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, FileText, Filter, X, ChevronLeft, ChevronRight, Wallet, BadgeAlert, TrendingUp, Calendar, AlertCircle, CheckCircle2, Banknote } from 'lucide-react';
+import { Search, FileText, Filter, X, ChevronLeft, ChevronRight, Wallet, BadgeAlert, TrendingUp, Calendar, AlertCircle, CheckCircle2, Banknote, RefreshCw } from 'lucide-react';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 // City prefixes to skip when picking avatar character
 const CITY_PREFIXES = ['上海', '广州', '深圳', '北京', '杭州', '南京', '苏州', '成都', '武汉', '天津'];
@@ -56,6 +57,8 @@ type PaginatedResponse = {
 const LIMIT = 10;
 
 export default function FinanceCustomersPage() {
+    const toast = useToast();
+    const confirm = useConfirm();
     const [receivables, setReceivables] = useState<Receivable[]>([]);
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
@@ -80,6 +83,7 @@ export default function FinanceCustomersPage() {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState<Partial<Receivable>>({});
     const [saveLoading, setSaveLoading] = useState(false);
+    const [reconciling, setReconciling] = useState(false);
     const [userRole, setUserRole] = useState<string>('');
     const router = useRouter();
 
@@ -97,6 +101,19 @@ export default function FinanceCustomersPage() {
 
     const isManagerOrAdmin = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'admin';
 
+    const fetchStats = useCallback(async () => {
+        setStatsLoading(true);
+        try {
+            const res = await fetch('/api/finance/customers/stats');
+            const data = await res.json();
+            if (!data?.error) setStats(data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setStatsLoading(false);
+        }
+    }, []);
+
     const handleSaveEdit = async () => {
         if (!selectedItem || !editData) return;
         setSaveLoading(true);
@@ -106,34 +123,63 @@ export default function FinanceCustomersPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(editData),
             });
+            const data = await res.json();
             if (!res.ok) {
-                const data = await res.json();
                 throw new Error(data.error || '保存失败');
             }
 
             // Refresh list and update selected item locally (or close modal)
             setIsEditing(false);
-            setSelectedItem({ ...selectedItem, ...editData } as Receivable);
+            setSelectedItem({ ...selectedItem, ...(data.data || editData), customers: selectedItem.customers } as Receivable);
+            if (data.warnings?.length) {
+                toast.warning({ title: '账单已保存，但有附加事项需要处理', description: data.warnings.join('；') });
+            } else {
+                toast.success({ title: '账单已保存', description: '状态已按应收、已收和到期日重新计算。' });
+            }
             fetchReceivables();
+            fetchStats();
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '保存失败', description: err.message });
         } finally {
             setSaveLoading(false);
+        }
+    };
+
+    const handleReconcileStatuses = async () => {
+        const ok = await confirm({
+            title: '校准所有财务状态？',
+            description: '系统会按每张账单的应收金额、已收金额和到期日重新计算状态，并同步已付清账单的催款任务。',
+            confirmLabel: '开始校准',
+            cancelLabel: '取消',
+        });
+        if (!ok) return;
+
+        setReconciling(true);
+        try {
+            const res = await fetch('/api/finance/receivables/reconcile', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || '校准失败');
+
+            const summary = `检查 ${data.checked ?? 0} 单，修正 ${data.updated_statuses ?? 0} 个状态，关闭 ${data.completed_tasks ?? 0} 个催款任务`;
+            if (data.warnings?.length) {
+                toast.warning({ title: '状态校准完成，但有附加事项', description: `${summary}；${data.warnings.join('；')}` });
+            } else {
+                toast.success({ title: '状态校准完成', description: summary });
+            }
+            fetchReceivables();
+            fetchStats();
+        } catch (err: any) {
+            toast.error({ title: '校准失败', description: err.message });
+        } finally {
+            setReconciling(false);
         }
     };
 
 
     // Fetch stats
     useEffect(() => {
-        setStatsLoading(true);
-        fetch('/api/finance/customers/stats')
-            .then(res => res.json())
-            .then(data => {
-                if (!data?.error) setStats(data);
-            })
-            .catch(console.error)
-            .finally(() => setStatsLoading(false));
-    }, []);
+        fetchStats();
+    }, [fetchStats]);
 
     // Debounced search
     const handleSearchChange = (value: string) => {
@@ -271,6 +317,18 @@ export default function FinanceCustomersPage() {
                     <p className="text-sm text-slate-500 mt-1">展示核心财务数据与最新收款进度，全方位掌握客户收费状态。</p>
                 </div>
                 <div className="flex gap-3 w-full sm:w-auto">
+                    {isManagerOrAdmin && (
+                        <button
+                            type="button"
+                            onClick={handleReconcileStatuses}
+                            disabled={reconciling}
+                            className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            title="按应收、已收和到期日重新校准账单状态"
+                        >
+                            <RefreshCw className={`mr-2 h-4 w-4 ${reconciling ? 'animate-spin' : ''}`} />
+                            {reconciling ? '校准中' : '校准状态'}
+                        </button>
+                    )}
                     {/* Status Filter Button */}
                     <div className="relative" ref={filterRef}>
                         <button
