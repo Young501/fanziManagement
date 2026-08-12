@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { getRemainingReceivableAmount } from '@/lib/finance-status';
 
 function createAdminClient() {
     return createClient(
@@ -64,7 +65,7 @@ export async function POST() {
         const unpaidReceivables = (receivables || []).filter((r: any) => {
             const paid = Number(r.amount_paid_period || 0);
             const payable = Number(r.amount_payable_period || 0);
-            return payable > 0 && paid < payable;
+            return getRemainingReceivableAmount(payable, paid) > 0.01;
         });
 
         if (unpaidReceivables.length === 0) {
@@ -84,22 +85,36 @@ export async function POST() {
         );
 
         const completedTaskMap = new Map();
+        const cancelledTaskReceivableIds = new Set<string>();
         (allExistingTasks || []).forEach((t: any) => {
-            if (t.status === 'completed' || t.status === 'cancelled') {
+            if (t.status === 'completed') {
                 completedTaskMap.set(t.receivable_id, t.id);
+            }
+            if (t.status === 'cancelled') {
+                cancelledTaskReceivableIds.add(t.receivable_id);
             }
         });
 
         const toInsert = [];
         const toReopen: any[] = [];
+        let skippedActive = 0;
+        let skippedCancelled = 0;
         
         for (const rec of unpaidReceivables) {
-            if (activeTaskReceivableIds.has(rec.id)) continue;
+            if (activeTaskReceivableIds.has(rec.id)) {
+                skippedActive += 1;
+                continue;
+            }
+            if (cancelledTaskReceivableIds.has(rec.id)) {
+                skippedCancelled += 1;
+                continue;
+            }
 
             const paid = Number(rec.amount_paid_period || 0);
             const payable = Number(rec.amount_payable_period || 0);
-            const uncollected = payable - paid;
+            const uncollected = getRemainingReceivableAmount(payable, paid);
             const dueDate = rec.payment_due_date;
+            if (!dueDate || uncollected <= 0.01) continue;
             const isOverdue = dueDate < monthStart;
             const overdueDays = isOverdue
                 ? Math.floor((today.getTime() - new Date(dueDate).getTime()) / 86400000)
@@ -133,7 +148,13 @@ export async function POST() {
         }
 
         if (toInsert.length === 0 && toReopen.length === 0) {
-            return noStoreJson({ created: 0, message: 'All unpaid receivables already have open tasks' });
+            return noStoreJson({
+                created: 0,
+                reopened: 0,
+                skipped_active: skippedActive,
+                skipped_cancelled: skippedCancelled,
+                message: 'All unpaid receivables already have active tasks or were intentionally skipped',
+            });
         }
 
         if (toInsert.length > 0) {
@@ -158,7 +179,13 @@ export async function POST() {
             }
         }
 
-        return noStoreJson({ created: toInsert.length, reopened: toReopen.length, message: `Generated ${toInsert.length} tasks, Reopened ${toReopen.length} tasks` });
+        return noStoreJson({
+            created: toInsert.length,
+            reopened: toReopen.length,
+            skipped_active: skippedActive,
+            skipped_cancelled: skippedCancelled,
+            message: `Generated ${toInsert.length} tasks, reopened ${toReopen.length} tasks, skipped ${skippedActive} active and ${skippedCancelled} cancelled tasks`,
+        });
     } catch (err: any) {
         console.error('[collection-tasks/generate] unexpected error:', err);
         return noStoreJson({ error: err?.message ?? 'Internal server error' }, 500);

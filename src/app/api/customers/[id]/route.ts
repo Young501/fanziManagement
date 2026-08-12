@@ -29,6 +29,21 @@ async function getCurrentUserRole() {
     };
 }
 
+function canManageCustomers(role: string | null) {
+    return role === 'admin' || role === 'manager';
+}
+
+function parseShareRatio(value: unknown) {
+    if (value === null || value === undefined || value === '') return null;
+
+    const ratio = Number(value);
+    if (!Number.isFinite(ratio) || ratio < 0 || ratio > 100) {
+        throw new Error('股东持股比例必须在 0 到 100 之间');
+    }
+
+    return ratio;
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
         const { user } = await getCurrentUserRole();
@@ -94,8 +109,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { user } = await getCurrentUserRole();
+        const { user, role } = await getCurrentUserRole();
         if (!user) return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 });
+        if (!canManageCustomers(role)) {
+            return NextResponse.json({ error: '权限不足，仅管理员或经理可修改客户档案' }, { status: 403 });
+        }
 
         const { id } = await params;
         if (!id) {
@@ -119,13 +137,25 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         } = body;
 
         const supabase = createAdminClient();
+        const hasBasicCustomerUpdate = [
+            'company_name',
+            'contact_person',
+            'contact_info',
+            'website_member',
+            'address',
+            'customer_status',
+            'source_info',
+            'source_remark',
+            'service_manager',
+        ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
 
         // 1. Delete Shareholder
         if (deleteShareholderId) {
             const { error: deleteError } = await supabase
                 .from('customer_shareholders')
                 .delete()
-                .eq('id', deleteShareholderId);
+                .eq('id', deleteShareholderId)
+                .eq('customer_id', id);
 
             if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
             return NextResponse.json({ success: true });
@@ -133,17 +163,31 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
         // 2. Upsert Shareholder
         if (shareholder) {
+            const shareholderName = String(shareholder.name || '').trim();
+            if (!shareholderName) {
+                return NextResponse.json({ error: '请填写股东姓名' }, { status: 400 });
+            }
+
+            let shareRatio: number | null;
+            try {
+                shareRatio = parseShareRatio(shareholder.share_ratio);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : '股东信息不正确';
+                return NextResponse.json({ error: message }, { status: 400 });
+            }
+
             if (shareholder.id) {
                 // Update existing
                 const { error: updateShError } = await supabase
                     .from('customer_shareholders')
                     .update({
-                        name: shareholder.name,
-                        share_ratio: shareholder.share_ratio || null,
+                        name: shareholderName,
+                        share_ratio: shareRatio,
                         contact_number: shareholder.contact_number || null,
                         updated_at: new Date().toISOString()
                     })
-                    .eq('id', shareholder.id);
+                    .eq('id', shareholder.id)
+                    .eq('customer_id', id);
                 if (updateShError) return NextResponse.json({ error: updateShError.message }, { status: 500 });
             } else {
                 // Insert new
@@ -151,8 +195,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                     .from('customer_shareholders')
                     .insert({
                         customer_id: id,
-                        name: shareholder.name,
-                        share_ratio: shareholder.share_ratio || null,
+                        name: shareholderName,
+                        share_ratio: shareRatio,
                         contact_number: shareholder.contact_number || null
                     });
                 if (insertShError) return NextResponse.json({ error: insertShError.message }, { status: 500 });
@@ -162,6 +206,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
         // 3. Upsert Company Profile
         if (companyProfile) {
+            if (typeof companyProfile !== 'object' || Array.isArray(companyProfile)) {
+                return NextResponse.json({ error: '公司画像数据格式不正确' }, { status: 400 });
+            }
+
             // Because customer_id is the foreign key and likely unique (1:1), 
             // we first check if the profile exists to decide update vs insert
             const { data: existingProfile } = await supabase
@@ -172,6 +220,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
             const profileData = { ...companyProfile };
             delete profileData.id; // ensure we don't accidentally insert/update ID if not meant to
+            delete profileData.customer_id;
 
             if (existingProfile) {
                 const { error: updateProfileError } = await supabase
@@ -186,15 +235,28 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                     .insert(profileData);
                 if (insertProfileError) return NextResponse.json({ error: insertProfileError.message }, { status: 500 });
             }
-            return NextResponse.json({ success: true });
+            if (!hasBasicCustomerUpdate) {
+                return NextResponse.json({ success: true });
+            }
         }
 
-        // 4. Update basic customer info (Fallback if no specific nested objects sent)
+        // 4. Update basic customer info
+        const nextCompanyName = typeof company_name === 'string' ? company_name.trim() : '';
+        const nextContactPerson = typeof contact_person === 'string' ? contact_person.trim() : '';
+
+        if (!nextCompanyName || !nextContactPerson) {
+            return NextResponse.json({ error: '企业名称和联系人不能为空' }, { status: 400 });
+        }
+
+        if (customer_status === '流失') {
+            return NextResponse.json({ error: '请通过流失客户登记流程记录流失原因，不能直接把客户改为流失状态' }, { status: 400 });
+        }
+
         const { data, error } = await supabase
             .from('customers')
             .update({
-                company_name,
-                contact_person,
+                company_name: nextCompanyName,
+                contact_person: nextContactPerson,
                 contact_info,
                 website_member,
                 address,

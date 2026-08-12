@@ -4,9 +4,12 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { UserPlus, Save, X, History, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { CUSTOMER_SOURCE_OPTIONS, getCustomerSourceRemarkPlaceholder } from '@/lib/customer-source';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 function NewCustomerContent() {
     const router = useRouter();
+    const toast = useToast();
+    const confirm = useConfirm();
     const searchParams = useSearchParams();
     const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'form';
     const [activeTab, setActiveTab] = useState<'form' | 'history'>(initialTab);
@@ -81,7 +84,7 @@ function NewCustomerContent() {
     const [companyCode, setCompanyCode] = useState('');
     const [unifiedSocialCreditCode, setUnifiedSocialCreditCode] = useState('');
     const [industry, setIndustry] = useState('');
-    const [customerType, setCustomerType] = useState('企业');
+    const [customerType, setCustomerType] = useState('');
     const [contactPerson, setContactPerson] = useState('');
     const [contactInfo, setContactInfo] = useState('');
     const [websiteMemberName, setWebsiteMemberName] = useState('');
@@ -150,7 +153,13 @@ function NewCustomerContent() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('确定要删除这条记录吗？该操作不可撤销。')) return;
+        const ok = await confirm({
+            title: '删除这条建档历史？',
+            description: '删除后只会移除这条历史记录，不会恢复已关联的业务判断。该操作不可撤销。',
+            confirmLabel: '删除记录',
+            variant: 'danger',
+        });
+        if (!ok) return;
 
         try {
             const res = await fetch(`/api/customers/new/history?id=${id}`, {
@@ -161,25 +170,53 @@ function NewCustomerContent() {
                 throw new Error(data.error || '删除失败');
             }
             fetchHistory();
+            toast.success({ title: '历史记录已删除' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '删除失败', description: err.message });
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!companyName || !contactPerson) {
-            setError('请填写公司名称和联系人');
-            return;
-        }
-        if (!standardPrice || !payCycleMonths || !effectiveDate) {
-            setError('请填写服务价格相关的必填项 (每个收款周期总金额、收款周期、生效日期)');
+    const validateForm = () => {
+        const trimmedCompanyName = companyName.trim();
+        const trimmedContactPerson = contactPerson.trim();
+        const price = Number(standardPrice);
+        const cycle = Number(payCycleMonths);
+        const deposit = depositAmount ? Number(depositAmount) : 0;
+        const billingFee = billingFeeMonth ? Number(billingFeeMonth) : 0;
+        const paid = paidAmount ? Number(paidAmount) : 0;
+        const maxAttachmentSize = 50 * 1024 * 1024;
+
+        if (!trimmedCompanyName || trimmedCompanyName.length < 2) return '请填写完整的公司/客户名称';
+        if (!trimmedContactPerson) return '请填写主要联系人';
+        if (!standardPrice || !Number.isFinite(price) || price <= 0) return '请填写大于 0 的每个收款周期总金额';
+        if (payCycleMonths === '' || !Number.isFinite(cycle) || cycle < 0) return '请选择有效的收款周期';
+        if (!effectiveDate || Number.isNaN(new Date(effectiveDate).getTime())) return '请选择有效的服务生效/计费起始日';
+        if (depositAmount && (!Number.isFinite(deposit) || deposit < 0)) return '押金/定金金额不能为负数';
+        if (billingFeeMonth && (!Number.isFinite(billingFee) || billingFee < 0)) return '月均代账费/杂费不能为负数';
+        if (hasContract && !contractName.trim()) return '有正规合同时，请填写合同系统命名名称';
+        if (contractFile && contractFile.size > maxAttachmentSize) return '合同附件不能超过 50MB';
+        if (hasPaid && (!paidAmount || !Number.isFinite(paid) || paid <= 0)) return '已收首期款时，请填写大于 0 的已收金额';
+        if (hasPaid && (!paidAt || Number.isNaN(new Date(paidAt).getTime()))) return '已收首期款时，请选择收款日期';
+        if (hasPaid && !paymentMethod) return '已收首期款时，请选择收款方式';
+        if (hasPaid && paid > price + 0.01) return '已收金额不能超过本期应收金额。押金/预收款请填写押金字段或另登记一次性收款';
+
+        return null;
+    };
+
+    const handleSubmit = async () => {
+        const validationMessage = validateForm();
+        if (validationMessage) {
+            setError(validationMessage);
+            toast.warning({ title: '建档信息还不完整', description: validationMessage });
             return;
         }
 
-        if (!confirm('请确认新客户建档信息填写无误。\n\n确定要提交并创建该客户档案吗？')) {
-            return;
-        }
+        const ok = await confirm({
+            title: '确认创建客户档案？',
+            description: `客户：${companyName.trim()}。系统会同时建立客户档案、公司画像、首期合同/价格设置${hasPaid ? '，并登记首期收款' : '，并生成首期应收账单'}。`,
+            confirmLabel: '创建档案',
+        });
+        if (!ok) return;
 
         setSubmitting(true);
         setError(null);
@@ -285,19 +322,34 @@ function NewCustomerContent() {
             }
 
             const data = await res.json();
+            if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+                toast.warning({ title: '客户已创建，但有附加事项需要处理', description: data.warnings.join('；') });
+            }
             if (data.id) {
-                alert('客户创建成功');
+                toast.success({ title: '客户创建成功', description: companyName.trim() });
                 setActiveTab('history');
                 // Optional: Reset basic form state here if needed
                 setCompanyName('');
                 setContactPerson('');
-                setSubmitting(false);
+                setContactInfo('');
+                setStandardPrice('');
+                setBillingFeeMonth('');
+                setPayCycleMonths('');
+                setEffectiveDate('');
+                setDepositAmount('');
+                setHasPaid(false);
+                setPaidAmount('');
+                setPaidAt('');
+                setPaymentMethod('');
+                setPaymentNote('');
             } else {
+                toast.success({ title: '客户创建成功' });
                 setActiveTab('history');
-                setSubmitting(false);
             }
         } catch (err: any) {
             setError(err.message);
+            toast.error({ title: '客户创建失败', description: err.message });
+        } finally {
             setSubmitting(false);
         }
     };
@@ -522,7 +574,7 @@ function NewCustomerContent() {
                                         >
                                             <option value="正常">正常</option>
                                             <option value="拖欠户">拖欠户</option>
-                                            <option value="流失">流失</option>
+                                            <option value="风险户">风险户</option>
                                         </select>
                                     </div>
 
@@ -964,7 +1016,7 @@ function NewCustomerContent() {
                                                         <label htmlFor="sealFinance" className="text-sm font-medium text-slate-700">财务章</label>
                                                     </div>
                                                     <div className="flex items-center space-x-2">
-                                                        <input type="checkbox" id="sealInvoice" checked={sealInvoice} onChange={e => setInvoiceProxyFlag(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                                        <input type="checkbox" id="sealInvoice" checked={sealInvoice} onChange={e => setSealInvoice(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
                                                         <label htmlFor="sealInvoice" className="text-sm font-medium text-slate-700">发票章</label>
                                                     </div>
                                                     <div className="flex items-center space-x-2">

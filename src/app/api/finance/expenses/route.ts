@@ -1,6 +1,7 @@
 import { createClient as createServerClient } from '@/utils/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { isValidExpenseCategory, normalizeExpenseCategory } from '@/lib/expense-categories';
 
 function createAdminClient() {
     return createClient(
@@ -42,20 +43,21 @@ export async function POST(request: NextRequest) {
             attachment,
         } = body;
 
-        // Validate required fields
-        if (!expense_date) {
-            return noStoreJson({ error: '费用日期不能为空' }, 400);
+        const normalizedDate = typeof expense_date === 'string' ? expense_date.trim() : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) || Number.isNaN(new Date(`${normalizedDate}T00:00:00`).getTime())) {
+            return noStoreJson({ error: '费用日期不正确' }, 400);
         }
-        if (!expense_amount || parseFloat(expense_amount) <= 0) {
+
+        const amount = Number(expense_amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
             return noStoreJson({ error: '费用金额必须大于0' }, 400);
         }
-        if (!expense_category) {
+        const normalizedCategory = normalizeExpenseCategory(expense_category);
+        if (!normalizedCategory) {
             return noStoreJson({ error: '费用类别不能为空' }, 400);
         }
 
-        // Category whitelist
-        const VALID_CATEGORIES = ['办公用品费', '水费', '电费', '交通费', '汽油费', '物业费', '汽车费', '社保费', '兼职工资', '外包代办费', '招待费', '其他'];
-        if (!VALID_CATEGORIES.includes(expense_category)) {
+        if (!isValidExpenseCategory(normalizedCategory)) {
             return noStoreJson({ error: '无效的费用类别' }, 400);
         }
 
@@ -73,9 +75,9 @@ export async function POST(request: NextRequest) {
         const record = {
             customer_id: customer_id || null,
             receivable_id: receivable_id || null,
-            expense_date,
-            expense_amount: parseFloat(expense_amount),
-            expense_category,
+            expense_date: normalizedDate,
+            expense_amount: amount,
+            expense_category: normalizedCategory,
             expense_type: expense_type || null,
             vendor_name: vendor_name || null,
             payment_method: payment_method || null,

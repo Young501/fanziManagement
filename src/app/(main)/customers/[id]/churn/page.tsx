@@ -3,9 +3,12 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, UserMinus } from 'lucide-react';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 export default function ChurnRegistrationPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
+    const toast = useToast();
+    const confirm = useConfirm();
     const { id } = use(params);
 
     const [customerName, setCustomerName] = useState('...');
@@ -33,12 +36,28 @@ export default function ChurnRegistrationPage({ params }: { params: Promise<{ id
             .finally(() => setLoading(false));
     }, [id]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!churnReason) {
-            setError('请选择或填写流失核心原因');
+    const handleSubmit = async () => {
+        if (!churnReason.trim()) {
+            const message = '请选择或填写流失核心原因';
+            setError(message);
+            toast.warning({ title: '流失登记信息不完整', description: message });
             return;
         }
+
+        if (!churnDate || Number.isNaN(new Date(churnDate).getTime())) {
+            const message = '请选择有效的流失日期';
+            setError(message);
+            toast.warning({ title: '流失登记信息不完整', description: message });
+            return;
+        }
+
+        const ok = await confirm({
+            title: '确认登记客户流失？',
+            description: `提交后，“${customerName}”会被标记为流失，并清理未完成的催款任务。`,
+            confirmLabel: '确认流失',
+            variant: 'danger',
+        });
+        if (!ok) return;
 
         setSubmitting(true);
         setError(null);
@@ -63,6 +82,13 @@ export default function ChurnRegistrationPage({ params }: { params: Promise<{ id
                 throw new Error(data.error || '登记失败');
             }
 
+            const data = await res.json();
+            if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+                toast.warning({ title: '流失已登记，但有附加事项需要处理', description: data.warnings.join('；') });
+            } else {
+                toast.success({ title: '流失登记成功', description: customerName });
+            }
+
             setShowSuccess(true);
             setTimeout(() => {
                 setShowSuccess(false);
@@ -71,6 +97,8 @@ export default function ChurnRegistrationPage({ params }: { params: Promise<{ id
             }, 3000);
         } catch (err: any) {
             setError(err.message);
+            toast.error({ title: '流失登记失败', description: err.message });
+        } finally {
             setSubmitting(false);
         }
     };
@@ -134,7 +162,7 @@ export default function ChurnRegistrationPage({ params }: { params: Promise<{ id
                         </div>
                     )}
 
-                    <form id="churn-form" onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-red-100 overflow-hidden">
+                    <form id="churn-form" onSubmit={(event) => { event.preventDefault(); handleSubmit(); }} className="bg-white rounded-xl shadow-sm border border-red-100 overflow-hidden">
                         <div className="p-6 border-b border-red-50 bg-red-50/30">
                             <h2 className="text-lg font-semibold text-red-800">流失详情调查</h2>
                             <p className="text-sm text-red-600/80 mt-1">提交后，该客户状态将自动更新为“流失”。</p>

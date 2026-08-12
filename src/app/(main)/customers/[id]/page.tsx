@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { MaskedContact } from '@/components/ui/MaskedContact';
 import { getCustomerSourceRemarkPlaceholder } from '@/lib/customer-source';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 type CustomerInfo = {
     customer: any;
@@ -25,6 +26,8 @@ const TextRow = ({ label, value }: { label: string, value: any }) => (
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
+    const toast = useToast();
+    const confirm = useConfirm();
     const { id } = use(params);
 
     const [data, setData] = useState<CustomerInfo | null>(null);
@@ -73,6 +76,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     const isAdmin = userRole?.toLowerCase() === 'admin';
 
     const handleSaveBasic = async () => {
+        if (!String(editBasicData.company_name || '').trim() || !String(editBasicData.contact_person || '').trim()) {
+            toast.warning({ title: '请补全必填信息', description: '企业名称和联系人不能为空。' });
+            return;
+        }
+
+        if (editBasicData.customer_status === '流失') {
+            toast.warning({ title: '请使用流失登记流程', description: '流失客户需要记录流失日期和原因，不能在基础档案里直接修改。' });
+            return;
+        }
+
         setIsSaving(true);
         try {
             const res = await fetch(`/api/customers/${id}`, {
@@ -90,17 +103,25 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                     service_manager: editBasicData.service_manager
                 })
             });
-            if (!res.ok) throw new Error('保存失败');
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload.error || '保存失败');
             setIsEditingBasic(false);
             fetchCustomer();
+            toast.success({ title: '客户档案已保存' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '保存客户档案失败', description: err.message });
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleSaveProfile = async () => {
+        const registeredCapitalValue = Number(editProfileData.registered_capital || 0);
+        if (editProfileData.registered_capital && registeredCapitalValue < 0) {
+            toast.warning({ title: '注册资本不能为负数' });
+            return;
+        }
+
         setIsSaving(true);
         try {
             const res = await fetch(`/api/customers/${id}`, {
@@ -108,17 +129,30 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ companyProfile: editProfileData })
             });
-            if (!res.ok) throw new Error('保存失败');
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload.error || '保存失败');
             setIsEditingProfile(false);
             fetchCustomer();
+            toast.success({ title: '公司画像已保存' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '保存公司画像失败', description: err.message });
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleSaveShareholder = async () => {
+        if (!String(editShareholderData.name || '').trim()) {
+            toast.warning({ title: '请填写股东姓名' });
+            return;
+        }
+
+        const ratio = Number(editShareholderData.share_ratio || 0);
+        if (editShareholderData.share_ratio && (!Number.isFinite(ratio) || ratio < 0 || ratio > 100)) {
+            toast.warning({ title: '持股比例不正确', description: '股东持股比例必须在 0 到 100 之间。' });
+            return;
+        }
+
         setIsSaving(true);
         try {
             const res = await fetch(`/api/customers/${id}`, {
@@ -126,28 +160,39 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ shareholder: editShareholderData })
             });
-            if (!res.ok) throw new Error('保存失败');
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload.error || '保存失败');
             setIsEditingShareholder(false);
             fetchCustomer();
+            toast.success({ title: '股东信息已保存' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '保存股东信息失败', description: err.message });
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleDeleteShareholder = async (shareholderId: string) => {
-        if (!confirm('确定要删除该股东吗？')) return;
+        const ok = await confirm({
+            title: '删除该股东信息？',
+            description: '删除后不会影响客户档案本身，但该股东记录不可恢复。',
+            confirmLabel: '删除股东',
+            variant: 'danger',
+        });
+        if (!ok) return;
+
         try {
             const res = await fetch(`/api/customers/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ deleteShareholderId: shareholderId })
             });
-            if (!res.ok) throw new Error('删除失败');
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload.error || '删除失败');
             fetchCustomer();
+            toast.success({ title: '股东信息已删除' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '删除股东信息失败', description: err.message });
         }
     };
 
@@ -157,16 +202,15 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     const handleDeleteCustomer = async () => {
         if (!isAdmin || !data?.customer) return;
 
-        const firstConfirm = window.confirm(
-            `确定要永久删除客户档案“${data.customer.company_name}”吗？\n这会一并删除合同、账单、收款等关联记录，且不可撤销。`
-        );
-        if (!firstConfirm) return;
-
-        const typedName = window.prompt(`为防止误删，请输入客户名称“${data.customer.company_name}”后继续删除：`, '');
-        if (typedName !== data.customer.company_name) {
-            window.alert('输入的客户名称不匹配，已取消删除。');
-            return;
-        }
+        const ok = await confirm({
+            title: '永久删除客户档案？',
+            description: `这会一并删除“${data.customer.company_name}”的合同、账单、收款、成本、催款任务等关联记录，删除后不可恢复。`,
+            confirmLabel: '永久删除',
+            variant: 'danger',
+            requireText: data.customer.company_name,
+            requireTextLabel: '输入完整客户名称后继续',
+        });
+        if (!ok) return;
 
         setIsDeletingCustomer(true);
         try {
@@ -177,9 +221,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                 throw new Error(payload.error || '删除客户档案失败');
             }
 
+            toast.success({ title: '客户档案已删除', description: data.customer.company_name });
             router.push('/customers');
         } catch (err: any) {
-            window.alert(err.message);
+            toast.error({ title: '删除客户档案失败', description: err.message });
         } finally {
             setIsDeletingCustomer(false);
         }

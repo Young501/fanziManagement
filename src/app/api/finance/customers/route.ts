@@ -1,5 +1,6 @@
 ﻿import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { calculateReceivableStatus } from '@/lib/finance-status';
 
 function createAdminClient() {
     return createClient(
@@ -103,11 +104,18 @@ export async function GET(request: NextRequest) {
 
         // Ensure current_receipt_date/amount are populated from payment_records if missing
         filteredData = filteredData.map((item: any) => {
+            const derivedStatus = calculateReceivableStatus(
+                Number(item.amount_paid_period || 0),
+                Number(item.amount_payable_period || 0),
+                item.payment_due_date
+            );
+
             if (!item.current_receipt_date && item.payment_records && item.payment_records.length > 0) {
                 // Sort by paid_at desc to get the latest
                 const latest = [...item.payment_records].sort((a, b) => new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime())[0];
                 return {
                     ...item,
+                    status: derivedStatus,
                     current_receipt_date: latest.paid_at,
                     current_receipt_amount: latest.paid_amount,
                     // Keep payment_records small or remove it from the final response
@@ -116,6 +124,7 @@ export async function GET(request: NextRequest) {
             }
             return {
                 ...item,
+                status: derivedStatus,
                 payment_records: undefined
             };
         });
@@ -134,17 +143,17 @@ export async function GET(request: NextRequest) {
                 // We now trust the 'status' and 'payment_due_date' of the latest record.
 
                 if (statusFilter === 'paid') {
-                    return (status === 'paid' || status === 'pending');
+                    return status === 'paid';
                 }
 
                 if (statusFilter === 'overdue') {
-                    return status !== 'paid' && status !== 'pending' && isOverdue;
+                    return status === 'overdue' || (status !== 'paid' && isOverdue);
                 }
 
                 // Filtering for 'unpaid'
                 if (statusFilter === 'unpaid') {
                     // Just truly unpaid and NOT overdue
-                    return status !== 'paid' && status !== 'pending' && !isOverdue;
+                    return status !== 'paid' && status !== 'overdue' && !isOverdue;
                 }
 
                 return true;

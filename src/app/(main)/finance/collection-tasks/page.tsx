@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { MaskedContact } from '@/components/ui/MaskedContact';
+import { useConfirm, useToast } from '@/components/ui/feedback';
 
 // ────────────────────────────────────────────────────────────── types
 type CollectionTask = {
@@ -93,6 +94,8 @@ function getAvatarColor(name: string) {
 
 // ────────────────────────────────────────────────────────────── main component
 function CollectionTasksContent() {
+    const toast = useToast();
+    const confirmAction = useConfirm();
     const router = useRouter();
     const searchParams = useSearchParams();
     const initialTab = (searchParams.get('tab') as Tab) || 'due_this_month';
@@ -163,29 +166,52 @@ function CollectionTasksContent() {
     // ── Quick actions
     const markContacted = async (task: CollectionTask) => {
         setUpdatingId(task.id);
-        const todayStr = new Date().toISOString().split('T')[0];
-        await fetch(`/api/finance/collection-tasks/${task.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ last_contact_at: todayStr }),
-        });
-        setUpdatingId(null);
-        fetchTasks();
-        fetchStats();
+        try {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const res = await fetch(`/api/finance/collection-tasks/${task.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ last_contact_at: todayStr }),
+            });
+            const json = await res.json();
+            if (!res.ok || json.error) throw new Error(json.error || '更新失败');
+            toast.success({ title: '已记录联系', description: '最后联系日期已更新。' });
+            fetchTasks();
+            fetchStats();
+        } catch (err: any) {
+            toast.error({ title: '更新失败', description: err.message });
+        } finally {
+            setUpdatingId(null);
+        }
     };
 
     const markComplete = async (task: CollectionTask) => {
-        if (!confirm(`确认将「${task.customers?.company_name}」任务标为已完成？`)) return;
-        setUpdatingId(task.id);
-        await fetch(`/api/finance/collection-tasks/${task.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'completed' }),
+        const ok = await confirmAction({
+            title: '标记催款完成？',
+            description: `确认将「${task.customers?.company_name ?? '该客户'}」的催款任务标为已完成。若后续撤销收款，系统可在自动生成时重新打开已完成任务。`,
+            confirmLabel: '标记完成',
+            cancelLabel: '取消',
         });
-        setUpdatingId(null);
-        if (selectedTask?.id === task.id) setSelectedTask(null);
-        fetchTasks();
-        fetchStats();
+        if (!ok) return;
+
+        setUpdatingId(task.id);
+        try {
+            const res = await fetch(`/api/finance/collection-tasks/${task.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'completed' }),
+            });
+            const json = await res.json();
+            if (!res.ok || json.error) throw new Error(json.error || '更新失败');
+            if (selectedTask?.id === task.id) setSelectedTask(null);
+            toast.success({ title: '催款任务已完成', description: '任务已从待处理列表移除。' });
+            fetchTasks();
+            fetchStats();
+        } catch (err: any) {
+            toast.error({ title: '更新失败', description: err.message });
+        } finally {
+            setUpdatingId(null);
+        }
     };
 
     const setFollowup = async (taskId: string, date: string) => {
@@ -246,9 +272,9 @@ function CollectionTasksContent() {
                     } : null
                 };
             });
-            alert('调价提交成功');
+            toast.success({ title: '调价已提交', description: '账单应收金额、任务待收金额和账单状态已重新计算。' });
         } catch (err: any) {
-            alert(err.message);
+            toast.error({ title: '调价失败', description: err.message });
         } finally {
             setSavingNegotiation(false);
         }
@@ -261,11 +287,15 @@ function CollectionTasksContent() {
         try {
             const res = await fetch('/api/finance/collection-tasks/generate', { method: 'POST' });
             const json = await res.json();
-            setGenerateMsg(json.message ?? (json.error ? `错误: ${json.error}` : '完成'));
+            if (!res.ok || json.error) throw new Error(json.error || '自动生成失败');
+            const message = `新增 ${json.created ?? 0} 个，重新打开 ${json.reopened ?? 0} 个，跳过进行中 ${json.skipped_active ?? 0} 个，跳过已取消 ${json.skipped_cancelled ?? 0} 个`;
+            setGenerateMsg(message);
+            toast.success({ title: '催款任务已生成', description: message });
             fetchTasks();
             fetchStats();
         } catch (err: any) {
             setGenerateMsg(`请求失败: ${err.message}`);
+            toast.error({ title: '自动生成失败', description: err.message });
         } finally {
             setGenerating(false);
             setTimeout(() => setGenerateMsg(null), 4000);
@@ -323,8 +353,9 @@ function CollectionTasksContent() {
 
             const dateStr = new Date().toISOString().split('T')[0];
             XLSX.writeFile(workbook, `催款任务_${dateStr}.xlsx`);
+            toast.success({ title: '导出完成', description: '催款任务 Excel 已生成。' });
         } catch (err: any) {
-            alert(err.message || '导出失败');
+            toast.error({ title: '导出失败', description: err.message || '导出失败' });
         } finally {
             setExporting(false);
         }
@@ -492,7 +523,7 @@ function CollectionTasksContent() {
                                 <p className="text-sm text-slate-500 font-medium">
                                     {activeTab === 'due_this_month' ? '本月暂无待催款项 🎉' : '暂无逾期账款 🎉'}
                                 </p>
-                                <p className="text-xs text-slate-400">点击"生成任务"创建催款记录</p>
+                                <p className="text-xs text-slate-400">点击“生成任务”创建催款记录</p>
                             </div>
                         </div>
                     )}

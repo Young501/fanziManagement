@@ -1,298 +1,308 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { LayoutGroup, motion } from 'framer-motion';
-import { Banknote, Briefcase, Building2, ChevronDown, ChevronRight, LayoutDashboard, ShieldCheck, type LucideIcon } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { LayoutGroup, motion } from "framer-motion";
+import {
+    Banknote,
+    Briefcase,
+    Building2,
+    ChevronDown,
+    ChevronRight,
+    LayoutDashboard,
+    ShieldCheck,
+    X,
+    type LucideIcon,
+} from "lucide-react";
+
+import { createClient } from "@/utils/supabase/client";
+
+type NavLeaf = {
+    name: string;
+    href: string;
+};
 
 type NavItem = {
     name: string;
     href?: string;
     icon: LucideIcon;
-    subItems?: (
-        | { name: string; href: string }
-        | { name: string; subItems: { name: string; href: string }[] }
-    )[];
+    subItems?: NavLeaf[];
+};
+
+type UserProfile = {
+    fullName: string;
+    email: string;
+    initial: string;
+    role: string;
 };
 
 const navItems: NavItem[] = [
-    { name: '仪表盘', href: '/', icon: LayoutDashboard },
+    { name: "仪表盘", href: "/", icon: LayoutDashboard },
     {
-        name: '公司核算',
+        name: "公司核算",
         icon: Building2,
-        subItems: [
-            { name: '股东分红', href: '/accounting/dividend' }
-        ]
+        subItems: [{ name: "股东分红", href: "/accounting/dividend" }],
     },
     {
-        name: '商务与客户',
+        name: "商务与客户",
         icon: Briefcase,
         subItems: [
-            { name: '客户档案', href: '/customers' },
-            { name: '新增客户', href: '/customers/new' },
-            { name: '流失客户', href: '/customers/churn' }
-        ]
+            { name: "客户档案", href: "/customers" },
+            { name: "新增客户", href: "/customers/new" },
+            { name: "流失客户", href: "/customers/churn" },
+        ],
     },
     {
-        name: '财务中心',
+        name: "财务中心",
         icon: Banknote,
         subItems: [
-            { name: '客户信息', href: '/finance/customers' },
-            { name: '催款任务', href: '/finance/collection-tasks' },
-            { name: '收款记录', href: '/finance/payment' },
-            { name: '成本记录', href: '/finance/expenses' }
-        ]
+            { name: "客户账款", href: "/finance/customers" },
+            { name: "催款任务", href: "/finance/collection-tasks" },
+            { name: "收款记录", href: "/finance/payment" },
+            { name: "成本记录", href: "/finance/expenses" },
+        ],
     },
     {
-        name: '资源与合约',
+        name: "资源与合约",
         icon: ShieldCheck,
         subItems: [
-            { name: '合同管理', href: '/resources/contracts' },
-            { name: '合同信息录入', href: '/resources/contracts/new' }
-        ]
-    }
+            { name: "合同管理", href: "/resources/contracts" },
+            { name: "合同信息录入", href: "/resources/contracts/new" },
+        ],
+    },
 ];
 
 const slideTransition = {
-    type: 'spring',
+    type: "spring",
     stiffness: 420,
     damping: 36,
-    mass: 0.65
+    mass: 0.65,
 } as const;
 
-export function Sidebar() {
+function isCustomersDetailPath(pathname: string) {
+    return /^\/customers\/[^/]+(?:\/churn)?$/.test(pathname);
+}
+
+function isActiveHref(pathname: string, href?: string) {
+    if (!href) return false;
+    if (href === "/") return pathname === "/";
+    if (href === "/customers") {
+        return pathname === href || isCustomersDetailPath(pathname);
+    }
+    return pathname === href;
+}
+
+function isGroupActive(pathname: string, item: NavItem) {
+    if (isActiveHref(pathname, item.href)) return true;
+    return item.subItems?.some((sub) => isActiveHref(pathname, sub.href)) ?? false;
+}
+
+function roleLabel(role: string) {
+    const normalized = role.toLowerCase();
+    if (normalized === "admin") return "管理员";
+    if (normalized === "manager") return "经理";
+    return "成员";
+}
+
+export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     const pathname = usePathname();
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-    const [userProfile, setUserProfile] = useState<{ fullName: string; email: string; initial: string; role: string } | null>(null);
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
     useEffect(() => {
-        navItems.forEach((item) => {
-            if (item.subItems && item.subItems.some((sub: any) => {
-                if (sub.href) return pathname.startsWith(sub.href);
-                if (sub.subItems) return sub.subItems.some((child: any) => pathname.startsWith(child.href));
-                return false;
-            })) {
-                setExpandedGroups((prev) => ({ ...prev, [item.name]: true }));
-            }
-        });
-    }, [pathname]);
+        let cancelled = false;
 
-    useEffect(() => {
         const fetchUserProfile = async () => {
             const supabase = createClient();
             const {
-                data: { user }
+                data: { user },
             } = await supabase.auth.getUser();
 
-            if (user) {
-                const { data: profile } = await supabase.from('profiles').select('full_name, role').eq('id', user.id).single();
-                const email = user.email || '';
-                let fullName = profile?.full_name;
-                const role = profile?.role || 'user';
+            if (!user || cancelled) return;
 
-                if (!fullName && email) {
-                    fullName = email.split('@')[0];
-                }
+            const { data: profile } = await supabase
+                .from("profiles")
+                .select("full_name, role")
+                .eq("id", user.id)
+                .maybeSingle();
 
-                fullName = fullName || 'Admin User';
-                const initial = fullName.charAt(0).toUpperCase() || 'A';
+            const email = user.email || "";
+            const fullName = profile?.full_name || email.split("@")[0] || "Admin User";
+            const role = profile?.role || "user";
+            const initial = fullName.trim().charAt(0).toUpperCase() || "A";
+
+            if (!cancelled) {
                 setUserProfile({ fullName, email, initial, role });
             }
         };
 
         fetchUserProfile();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    const toggleGroup = (name: string) => {
-        setExpandedGroups((prev) => ({ ...prev, [name]: !prev[name] }));
-    };
-
     return (
-        <aside className="w-64 h-screen bg-gradient-to-b from-white via-slate-50/90 to-slate-100/95 border-r border-slate-200/80 flex flex-col flex-shrink-0">
-            <div className="h-16 flex items-center px-6 border-b border-slate-200/80">
-                <img
-                    src="/logo.png"
-                    alt="Logo"
-                    className="h-8 max-w-full mr-3 object-contain"
-                    onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                    }}
-                />
-                <span className="text-xl font-bold text-slate-800 tracking-wide">管理台</span>
-            </div>
+        <>
+            <div
+                className={`fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm transition-opacity lg:hidden ${
+                    open ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+                onClick={onClose}
+                aria-hidden="true"
+            />
 
-            <LayoutGroup id="sidebar-nav-slide">
-                <nav className="flex-1 px-3 py-5 space-y-2 overflow-y-auto styled-scrollbar">
-                    {navItems.map((item) => {
-                        const hasSubItems = !!item.subItems;
-                        const isActiveExact = pathname === item.href;
-                        const isGroupActive = hasSubItems && item.subItems!.some((sub: any) => {
-                            if (sub.href) return pathname.startsWith(sub.href);
-                            if (sub.subItems) return sub.subItems.some((child: any) => pathname.startsWith(child.href));
-                            return false;
-                        });
-                        const isExpanded = !!expandedGroups[item.name];
-                        const Icon = item.icon;
+            <aside
+                className={`fixed inset-y-0 left-0 z-50 flex h-screen w-72 flex-shrink-0 flex-col border-r border-slate-200 bg-white shadow-2xl shadow-slate-950/10 transition-transform duration-300 lg:static lg:z-auto lg:w-64 lg:translate-x-0 lg:shadow-none ${
+                    open ? "translate-x-0" : "-translate-x-full"
+                }`}
+            >
+                <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5">
+                    <Link href="/" onClick={onClose} className="flex min-w-0 items-center gap-3">
+                        <Image src="/logo.png" alt="范咨管理台" width={112} height={36} className="h-8 w-auto object-contain" priority />
+                        <span className="sr-only">范咨管理台</span>
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 lg:hidden"
+                        aria-label="关闭菜单"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
 
-                        if (hasSubItems) {
-                            return (
-                                <div key={item.name} className="space-y-1.5">
-                                    <button
-                                        onClick={() => toggleGroup(item.name)}
-                                        className={`group w-full relative flex items-center justify-between px-4 py-3 rounded-xl border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isGroupActive
-                                            ? 'bg-gradient-to-r from-blue-50 to-cyan-50 text-blue-700 font-semibold border-blue-100'
-                                            : 'border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200'
+                <LayoutGroup id="sidebar-nav-slide">
+                    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 styled-scrollbar">
+                        {navItems.map((item) => {
+                            const hasSubItems = !!item.subItems?.length;
+                            const active = isGroupActive(pathname, item);
+                            const isExpanded = expandedGroups[item.name] ?? active;
+                            const Icon = item.icon;
+
+                            if (hasSubItems) {
+                                return (
+                                    <div key={item.name} className="space-y-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpandedGroups((prev) => ({ ...prev, [item.name]: !isExpanded }))}
+                                            aria-expanded={isExpanded}
+                                            className={`group flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition ${
+                                                active
+                                                    ? "border-blue-100 bg-blue-50 text-blue-700"
+                                                    : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900"
                                             }`}
-                                    >
-                                        <div className="flex items-center relative z-10">
-                                            <Icon
-                                                className={`w-5 h-5 mr-3 transition-colors duration-300 ${isGroupActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
-                                                    }`}
-                                            />
-                                            <span>{item.name}</span>
-                                        </div>
-                                        {isExpanded ? (
-                                            <ChevronDown
-                                                className={`w-4 h-4 transition-all duration-300 relative z-10 ${isGroupActive ? 'text-blue-600' : 'text-slate-400'
-                                                    }`}
-                                            />
-                                        ) : (
-                                            <ChevronRight
-                                                className={`w-4 h-4 transition-all duration-300 relative z-10 ${isGroupActive ? 'text-blue-600' : 'text-slate-400'
-                                                    }`}
-                                            />
-                                        )}
-                                    </button>
+                                        >
+                                            <span className="flex min-w-0 items-center gap-3">
+                                                <Icon className={`h-5 w-5 ${active ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"}`} />
+                                                <span className="truncate">{item.name}</span>
+                                            </span>
+                                            {isExpanded ? (
+                                                <ChevronDown className={`h-4 w-4 ${active ? "text-blue-600" : "text-slate-400"}`} />
+                                            ) : (
+                                                <ChevronRight className={`h-4 w-4 ${active ? "text-blue-600" : "text-slate-400"}`} />
+                                            )}
+                                        </button>
 
-                                    <div
-                                        className={`grid transition-[grid-template-rows,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 translate-y-0' : 'grid-rows-[0fr] opacity-70 -translate-y-1'
+                                        <div
+                                            className={`grid transition-[grid-template-rows,opacity] duration-200 ${
+                                                isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
                                             }`}
-                                    >
-                                        <div className="overflow-hidden">
-                                            <div className="pl-11 pr-2 py-1.5 space-y-1">
-                                                {item.subItems!.map((sub: any) => {
-                                                    if (sub.subItems) {
-                                                        const isGroupItemActive = sub.subItems.some((child: any) => pathname.startsWith(child.href));
+                                        >
+                                            <div className="overflow-hidden">
+                                                <div className="space-y-1 py-1 pl-9 pr-1">
+                                                    {item.subItems?.map((sub) => {
+                                                        const subActive = isActiveHref(pathname, sub.href);
+
                                                         return (
-                                                            <div key={sub.name} className="mt-2 mb-1">
-                                                                <div className={`text-[10px] font-bold uppercase tracking-widest px-3 mb-1.5 ${isGroupItemActive ? 'text-blue-600' : 'text-slate-400'}`}>
-                                                                    {sub.name}
-                                                                </div>
-                                                                <div className="space-y-1 pl-1">
-                                                                    {sub.subItems.map((child: any) => {
-                                                                        const isChildActive = pathname === child.href;
-                                                                        return (
-                                                                            <Link
-                                                                                key={child.href}
-                                                                                href={child.href}
-                                                                                className={`group relative flex items-center px-3 py-1.5 text-[13px] rounded-lg border transition-all duration-300 ${isChildActive
-                                                                                    ? 'text-blue-700 font-medium border-blue-50 bg-blue-50/50'
-                                                                                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/90 hover:border-slate-200'
-                                                                                    }`}
-                                                                            >
-                                                                                <span className="relative z-10">{child.name}</span>
-                                                                            </Link>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    const isSubActive = pathname === sub.href;
-
-                                                    return (
-                                                        <Link
-                                                            key={sub.href}
-                                                            href={sub.href}
-                                                            className={`group relative flex items-center px-3 py-2 text-sm rounded-lg border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isSubActive
-                                                                ? 'text-blue-700 font-semibold border-blue-100'
-                                                                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/90 hover:border-slate-200'
+                                                            <Link
+                                                                key={sub.href}
+                                                                href={sub.href}
+                                                                onClick={onClose}
+                                                                className={`group relative flex items-center rounded-lg border px-3 py-2 text-sm transition ${
+                                                                    subActive
+                                                                        ? "border-blue-100 text-blue-700"
+                                                                        : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-800"
                                                                 }`}
-                                                        >
-                                                            {isSubActive && (
-                                                                <>
-                                                                    <motion.span
-                                                                        layoutId="sidebar-active-pill"
-                                                                        transition={slideTransition}
-                                                                        className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-50 to-cyan-50"
-                                                                    />
-                                                                    <motion.span
-                                                                        layoutId="sidebar-active-rail"
-                                                                        transition={slideTransition}
-                                                                        className="absolute left-[-6px] top-[16%] bottom-[16%] w-1 rounded-r-md bg-blue-500"
-                                                                    />
-                                                                </>
-                                                            )}
-                                                            <span className="relative z-10">{sub.name}</span>
-                                                        </Link>
-                                                    );
-                                                })}
+                                                            >
+                                                                {subActive && (
+                                                                    <>
+                                                                        <motion.span
+                                                                            layoutId="sidebar-active-pill"
+                                                                            transition={slideTransition}
+                                                                            className="absolute inset-0 rounded-lg bg-blue-50"
+                                                                        />
+                                                                        <motion.span
+                                                                            layoutId="sidebar-active-rail"
+                                                                            transition={slideTransition}
+                                                                            className="absolute left-[-6px] top-[18%] bottom-[18%] w-1 rounded-r-md bg-blue-600"
+                                                                        />
+                                                                    </>
+                                                                )}
+                                                                <span className="relative z-10 truncate">{sub.name}</span>
+                                                            </Link>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            );
-                        }
+                                );
+                            }
 
-                        return (
-                            <Link
-                                key={item.name}
-                                href={item.href!}
-                                className={`group relative flex items-center px-4 py-3 rounded-xl border transition-[transform,background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden ${isActiveExact
-                                    ? 'text-blue-700 font-semibold border-blue-100'
-                                    : 'border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200'
+                            return (
+                                <Link
+                                    key={item.name}
+                                    href={item.href || "/"}
+                                    onClick={onClose}
+                                    className={`group relative flex items-center rounded-lg border px-3 py-2.5 text-sm font-medium transition ${
+                                        active
+                                            ? "border-blue-100 text-blue-700"
+                                            : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900"
                                     }`}
-                            >
-                                {isActiveExact && (
-                                    <>
-                                        <motion.span
-                                            layoutId="sidebar-active-pill"
-                                            transition={slideTransition}
-                                            className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-50 to-cyan-50"
-                                        />
-                                        <motion.span
-                                            layoutId="sidebar-active-rail"
-                                            transition={slideTransition}
-                                            className="absolute left-0 top-[14%] bottom-[14%] w-1 rounded-r-md bg-blue-500"
-                                        />
-                                    </>
-                                )}
-                                <Icon
-                                    className={`w-5 h-5 mr-3 relative z-10 transition-colors duration-300 ${isActiveExact ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
-                                        }`}
-                                />
-                                <span className="relative z-10">{item.name}</span>
-                            </Link>
-                        );
-                    })}
-                </nav>
-            </LayoutGroup>
+                                >
+                                    {active && (
+                                        <>
+                                            <motion.span
+                                                layoutId="sidebar-active-pill"
+                                                transition={slideTransition}
+                                                className="absolute inset-0 rounded-lg bg-blue-50"
+                                            />
+                                            <motion.span
+                                                layoutId="sidebar-active-rail"
+                                                transition={slideTransition}
+                                                className="absolute left-0 top-[18%] bottom-[18%] w-1 rounded-r-md bg-blue-600"
+                                            />
+                                        </>
+                                    )}
+                                    <Icon className={`relative z-10 mr-3 h-5 w-5 ${active ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"}`} />
+                                    <span className="relative z-10 truncate">{item.name}</span>
+                                </Link>
+                            );
+                        })}
+                    </nav>
+                </LayoutGroup>
 
-            <div className="p-4 border-t border-slate-200/80 bg-white/60 backdrop-blur">
-                <div className="flex items-center p-3 rounded-xl border border-transparent hover:border-slate-200 hover:bg-white transition-[background-color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer">
-                    <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm">
-                        {userProfile?.initial || 'AD'}
-                    </div>
-                    <div className="ml-3 flex-1 overflow-hidden">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                            <p className="text-sm font-semibold text-slate-800 truncate">{userProfile?.fullName || 'Admin User'}</p>
-                            {userProfile?.role && (
-                                <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 rounded border border-slate-200">
-                                    {userProfile.role}
-                                </span>
-                            )}
+                <div className="border-t border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex min-w-0 items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
+                            {userProfile?.initial || "A"}
                         </div>
-                        <p className="text-xs text-slate-500 truncate">{userProfile?.email || 'admin@company.com'}</p>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <p className="truncate text-sm font-semibold text-slate-900">{userProfile?.fullName || "加载中"}</p>
+                                <span className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                                    {roleLabel(userProfile?.role || "user")}
+                                </span>
+                            </div>
+                            <p className="truncate text-xs text-slate-500">{userProfile?.email || "正在读取账户信息"}</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </aside>
+            </aside>
+        </>
     );
 }
-
-
-
-
